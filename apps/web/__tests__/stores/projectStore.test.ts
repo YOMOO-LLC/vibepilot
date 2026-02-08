@@ -79,7 +79,7 @@ describe('projectStore', () => {
     ];
 
     useProjectStore.setState({ loading: true });
-    useProjectStore.getState().handleProjectListData(projects);
+    useProjectStore.getState().handleProjectListData({ projects });
 
     expect(useProjectStore.getState().projects).toEqual(projects);
     expect(useProjectStore.getState().loading).toBe(false);
@@ -107,7 +107,7 @@ describe('projectStore', () => {
       loading: true,
     });
 
-    useProjectStore.getState().handleProjectListData(projects);
+    useProjectStore.getState().handleProjectListData({ projects });
 
     // Current project should remain since it's in the list
     expect(useProjectStore.getState().currentProject).toEqual(projects[0]);
