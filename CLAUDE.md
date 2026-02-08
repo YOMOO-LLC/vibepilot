@@ -98,6 +98,26 @@ Frontend Store → transportManager.send(type, payload)
         → wsClient.dispatch(msg) → store listener updates state → React re-renders
 ```
 
+## Development Methodology
+
+**All new features must follow Test-Driven Development (TDD)**:
+
+1. **Red** — Write a failing test first that defines the expected behavior
+2. **Green** — Write the minimum implementation code to make the test pass
+3. **Refactor** — Clean up the code while keeping tests green
+
+**TDD workflow for this project**:
+- Before writing any implementation code, create the test file in the corresponding `__tests__/` directory
+- Run `pnpm --filter <package> test -- --run __tests__/<path>.test.ts` to confirm the test fails
+- Implement the feature until the test passes
+- Run the full test suite (`pnpm test`) to ensure no regressions
+- Only then proceed to the next feature or test case
+
+**Do NOT**:
+- Write implementation code without a corresponding test
+- Skip the "red" phase — if the test passes before implementation, the test is not testing the right thing
+- Write all tests at once — iterate one test case at a time
+
 ## Testing Patterns
 
 - **Framework**: Vitest 3 with globals enabled

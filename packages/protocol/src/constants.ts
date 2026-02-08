@@ -34,6 +34,13 @@ export const MessageType = {
   PROJECT_SWITCHED: 'project:switched',
   PROJECT_LIST: 'project:list',
   PROJECT_LIST_DATA: 'project:list-data',
+  PROJECT_ADD: 'project:add',
+  PROJECT_ADDED: 'project:added',
+  PROJECT_REMOVE: 'project:remove',
+  PROJECT_REMOVED: 'project:removed',
+  PROJECT_UPDATE: 'project:update',
+  PROJECT_UPDATED: 'project:updated',
+  PROJECT_ERROR: 'project:error',
 
   // File content
   FILE_READ: 'file:read',

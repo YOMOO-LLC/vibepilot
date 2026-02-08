@@ -142,6 +142,41 @@ export interface ProjectListDataPayload {
   currentProjectId: string | null;
 }
 
+export interface ProjectAddPayload {
+  name: string;
+  path: string;
+  favorite?: boolean;
+  color?: string;
+  tags?: string[];
+}
+
+export interface ProjectAddedPayload {
+  project: ProjectInfo;
+}
+
+export interface ProjectRemovePayload {
+  projectId: string;
+}
+
+export interface ProjectRemovedPayload {
+  projectId: string;
+}
+
+export interface ProjectUpdatePayload {
+  projectId: string;
+  updates: Partial<Pick<ProjectInfo, 'name' | 'favorite' | 'color' | 'tags'>>;
+}
+
+export interface ProjectUpdatedPayload {
+  project: ProjectInfo;
+}
+
+export interface ProjectErrorPayload {
+  operation: string;
+  error: string;
+  projectId?: string;
+}
+
 // --- File Content Messages ---
 
 export interface FileReadPayload {
@@ -201,6 +236,13 @@ export interface MessagePayloadMap {
   [MessageType.PROJECT_SWITCHED]: ProjectSwitchedPayload;
   [MessageType.PROJECT_LIST]: ProjectListPayload;
   [MessageType.PROJECT_LIST_DATA]: ProjectListDataPayload;
+  [MessageType.PROJECT_ADD]: ProjectAddPayload;
+  [MessageType.PROJECT_ADDED]: ProjectAddedPayload;
+  [MessageType.PROJECT_REMOVE]: ProjectRemovePayload;
+  [MessageType.PROJECT_REMOVED]: ProjectRemovedPayload;
+  [MessageType.PROJECT_UPDATE]: ProjectUpdatePayload;
+  [MessageType.PROJECT_UPDATED]: ProjectUpdatedPayload;
+  [MessageType.PROJECT_ERROR]: ProjectErrorPayload;
   [MessageType.FILE_READ]: FileReadPayload;
   [MessageType.FILE_DATA]: FileDataPayload;
   [MessageType.FILE_WRITE]: FileWritePayload;

@@ -14,4 +14,10 @@ export interface ProjectInfo {
   id: string;
   name: string;
   path: string;
+  // Metadata
+  lastAccessed?: number;  // 时间戳
+  favorite?: boolean;
+  color?: string;         // UI 标识色
+  tags?: string[];
+  createdAt?: number;
 }

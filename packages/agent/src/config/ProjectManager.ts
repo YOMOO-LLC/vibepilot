@@ -3,6 +3,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import type { ProjectInfo } from '@vibepilot/protocol';
+import { ProjectValidator } from './ProjectValidator.js';
 
 interface ProjectConfig {
   projects: ProjectInfo[];
@@ -50,6 +51,8 @@ export class ProjectManager {
     };
 
     await fs.writeFile(this.configPath, JSON.stringify(config, null, 2), 'utf-8');
+    // 设置文件权限为仅所有者读写
+    await fs.chmod(this.configPath, 0o600);
   }
 
   async registerProject(name: string, projectPath: string): Promise<ProjectInfo> {
@@ -62,6 +65,82 @@ export class ProjectManager {
     this.projects.set(project.id, project);
     await this.save();
     return project;
+  }
+
+  /**
+   * 添加新项目（带路径验证和元数据）
+   */
+  async addProject(
+    name: string,
+    projectPath: string,
+    metadata?: { favorite?: boolean; color?: string; tags?: string[] }
+  ): Promise<ProjectInfo> {
+    // 1. 验证路径
+    const validation = await ProjectValidator.validate(projectPath);
+    if (!validation.valid) {
+      throw new Error(validation.error || 'Invalid project path');
+    }
+
+    // 2. 检查路径是否已存在
+    const existingProject = this.getProjectByPath(validation.resolvedPath!);
+    if (existingProject) {
+      throw new Error(`Project path already exists: ${existingProject.name}`);
+    }
+
+    // 3. 创建项目
+    const project: ProjectInfo = {
+      id: uuidv4(),
+      name,
+      path: validation.resolvedPath!,
+      createdAt: Date.now(),
+      ...metadata,
+    };
+
+    this.projects.set(project.id, project);
+    await this.save();
+    return project;
+  }
+
+  /**
+   * 更新项目元数据
+   */
+  async updateProject(
+    projectId: string,
+    updates: Partial<Pick<ProjectInfo, 'name' | 'favorite' | 'color' | 'tags'>>
+  ): Promise<ProjectInfo> {
+    const project = this.projects.get(projectId);
+    if (!project) {
+      throw new Error('Project not found');
+    }
+
+    Object.assign(project, updates);
+    await this.save();
+    return project;
+  }
+
+  /**
+   * 更新项目的最后访问时间
+   */
+  async touchProject(projectId: string): Promise<void> {
+    const project = this.projects.get(projectId);
+    if (project) {
+      project.lastAccessed = Date.now();
+      await this.save();
+    }
+  }
+
+  /**
+   * 根据路径查找项目
+   */
+  getProjectByPath(projectPath: string): ProjectInfo | null {
+    return Array.from(this.projects.values()).find((p) => p.path === projectPath) || null;
+  }
+
+  /**
+   * 根据 ID 获取项目
+   */
+  getProject(projectId: string): ProjectInfo | null {
+    return this.projects.get(projectId) || null;
   }
 
   async removeProject(projectId: string): Promise<void> {
@@ -89,6 +168,8 @@ export class ProjectManager {
     }
 
     this.currentProjectId = projectId;
+    // 更新最后访问时间
+    project.lastAccessed = Date.now();
     await this.save();
     return project;
   }

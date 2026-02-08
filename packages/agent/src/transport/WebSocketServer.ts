@@ -11,6 +11,9 @@ import {
   type TerminalAttachPayload,
   type FileTreeListPayload,
   type ProjectSwitchPayload,
+  type ProjectAddPayload,
+  type ProjectRemovePayload,
+  type ProjectUpdatePayload,
   type TerminalCwdPayload,
   type FileReadPayload,
   type FileWritePayload,
@@ -177,6 +180,15 @@ export class VPWebSocketServer {
         break;
       case MessageType.PROJECT_LIST:
         this.handleProjectList(ws);
+        break;
+      case MessageType.PROJECT_ADD:
+        this.handleProjectAdd(ws, msg.payload as ProjectAddPayload);
+        break;
+      case MessageType.PROJECT_REMOVE:
+        this.handleProjectRemove(ws, msg.payload as ProjectRemovePayload);
+        break;
+      case MessageType.PROJECT_UPDATE:
+        this.handleProjectUpdate(ws, msg.payload as ProjectUpdatePayload);
         break;
       case MessageType.FILE_READ:
         this.handleFileRead(ws, msg.payload as FileReadPayload);
@@ -511,6 +523,71 @@ export class VPWebSocketServer {
     });
     if (ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(response));
+    }
+  }
+
+  private async handleProjectAdd(ws: WebSocket, payload: ProjectAddPayload): Promise<void> {
+    try {
+      const project = await this.projectManager.addProject(payload.name, payload.path, {
+        favorite: payload.favorite,
+        color: payload.color,
+        tags: payload.tags,
+      });
+
+      const response = createMessage(MessageType.PROJECT_ADDED, { project });
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(response));
+      }
+    } catch (error) {
+      const errorMsg = createMessage(MessageType.PROJECT_ERROR, {
+        operation: 'add',
+        error: error instanceof Error ? error.message : String(error),
+      });
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(errorMsg));
+      }
+    }
+  }
+
+  private async handleProjectRemove(ws: WebSocket, payload: ProjectRemovePayload): Promise<void> {
+    try {
+      await this.projectManager.removeProject(payload.projectId);
+
+      const response = createMessage(MessageType.PROJECT_REMOVED, {
+        projectId: payload.projectId,
+      });
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(response));
+      }
+    } catch (error) {
+      const errorMsg = createMessage(MessageType.PROJECT_ERROR, {
+        operation: 'remove',
+        error: error instanceof Error ? error.message : String(error),
+        projectId: payload.projectId,
+      });
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(errorMsg));
+      }
+    }
+  }
+
+  private async handleProjectUpdate(ws: WebSocket, payload: ProjectUpdatePayload): Promise<void> {
+    try {
+      const project = await this.projectManager.updateProject(payload.projectId, payload.updates);
+
+      const response = createMessage(MessageType.PROJECT_UPDATED, { project });
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(response));
+      }
+    } catch (error) {
+      const errorMsg = createMessage(MessageType.PROJECT_ERROR, {
+        operation: 'update',
+        error: error instanceof Error ? error.message : String(error),
+        projectId: payload.projectId,
+      });
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(errorMsg));
+      }
     }
   }
 
