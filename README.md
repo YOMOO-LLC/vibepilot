@@ -1,85 +1,443 @@
 # VibePilot
 
-> Browser-based terminal and file manager with persistent sessions and WebRTC acceleration
+> Browser-based development environment with persistent terminal sessions, real-time file editing, and optional cloud remote access.
 
-[![Tests](https://img.shields.io/badge/tests-294%20passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-414%20passing-brightgreen)]()
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)]()
 [![License](https://img.shields.io/badge/license-BSL%201.1-orange)]()
+[![Node.js](https://img.shields.io/badge/Node.js-20%2B-green)]()
+[![pnpm](https://img.shields.io/badge/pnpm-9.15%2B-F69220)]()
 
-VibePilot is a modern web-based development environment that brings your terminal and file system to the browser with production-grade features:
+VibePilot brings your terminal, file tree, and code editor to the browser. Run it locally for vibe coding, or deploy it remotely to access your development machine from anywhere.
 
-- **🔄 Session Persistence** — Terminal sessions survive browser refreshes (5min timeout)
-- **⚡ WebRTC Acceleration** — Low-latency terminal I/O and file transfers
-- **📂 Live File Tree** — Real-time file system monitoring with Monaco Editor
-- **🔌 PTY Sessions** — Full-featured terminal emulation with xterm.js
-- **🎯 Type-Safe Protocol** — Zero-dependency message protocol with compile-time safety
+**Key highlights:**
+
+- **Session persistence** — Terminal sessions survive browser refreshes (configurable timeout)
+- **WebRTC acceleration** — Sub-10ms terminal latency with automatic fallback to WebSocket
+- **Monaco Editor** — Full-featured code editor with syntax highlighting for 100+ languages
+- **Live file tree** — Real-time file system monitoring via chokidar
+- **Multi-project** — Switch between projects without restarting the agent
+- **Cloud mode** — Optional Supabase authentication for secure remote access
+- **PWA installable** — Install as a standalone desktop app
+
+---
+
+## Table of Contents
+
+- [Architecture](#architecture)
+- [Quick Start](#quick-start)
+- [Deployment Modes](#deployment-modes)
+- [CLI Reference](#cli-reference)
+- [Project Structure](#project-structure)
+- [Features](#features)
+- [Environment Variables](#environment-variables)
+- [Testing](#testing)
+- [Docker Deployment](#docker-deployment)
+- [Tech Stack](#tech-stack)
+- [Security](#security)
+- [Contributing](#contributing)
+- [License](#license)
+- [Roadmap](#roadmap)
+
+---
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                      Browser (Web)                       │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
-│  │   Terminal   │  │  File Tree   │  │    Editor    │  │
-│  │  (xterm.js)  │  │   (Lazy)     │  │   (Monaco)   │  │
-│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘  │
-│         └──────────────────┴──────────────────┘          │
-│                   TransportManager                       │
-│              (WebRTC ⚡ + WebSocket 🔌)                  │
-└──────────────────────────┬──────────────────────────────┘
-                           │
-                           │ @vibepilot/protocol
-                           │ (Type-safe messages)
-                           │
-┌──────────────────────────┴──────────────────────────────┐
-│                    Agent (Node.js)                       │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │
-│  │  PtyManager  │  │  FileWatcher │  │  WebRTC Peer │  │
-│  │  (node-pty)  │  │  (chokidar)  │  │(node-dc + WS)│  │
-│  └──────────────┘  └──────────────┘  └──────────────┘  │
-│                                                          │
-│         Session Persistence (orphan + timeout)          │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                        Browser (Web)                            │
+│                                                                 │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
+│  │   Terminal    │  │  File Tree   │  │    Monaco Editor     │  │
+│  │  (xterm.js)  │  │  (Lazy-load) │  │  (100+ languages)    │  │
+│  └──────┬───────┘  └──────┬───────┘  └──────────┬───────────┘  │
+│         └──────────────────┴─────────────────────┘              │
+│                     TransportManager                            │
+│               (WebRTC ⚡ + WebSocket 🔌)                        │
+│                                                                 │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────┐   │
+│  │ authStore│  │agentStore│  │projectStr│  │terminalStore │   │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────────┘   │
+└───────────────────────────┬─────────────────────────────────────┘
+                            │
+                            │ @vibepilot/protocol
+                            │ (29 type-safe message types)
+                            │
+┌───────────────────────────┴─────────────────────────────────────┐
+│                       Agent (Node.js)                           │
+│                                                                 │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
+│  │  PtyManager  │  │  FileWatcher │  │    WebRTC Peer       │  │
+│  │  (node-pty)  │  │  (chokidar)  │  │ (node-datachannel)   │  │
+│  └──────────────┘  └──────────────┘  └──────────────────────┘  │
+│                                                                 │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  Session Persistence (OutputDelegate → CircularBuffer)   │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
+│  │ AuthProvider │  │AgentRegistry │  │  ProjectManager      │  │
+│  │ (pluggable)  │  │ (pluggable)  │  │  (multi-project)     │  │
+│  └──────────────┘  └──────────────┘  └──────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
 ```
+
+**Communication flow:**
+
+```
+User Action → Zustand Store → transportManager.send()
+  → WebRTC data channel (preferred) or WebSocket (fallback)
+    → Agent WebSocketServer → dispatch → service handler
+      → response message → wsClient.dispatch() → store update → React re-render
+```
+
+---
 
 ## Quick Start
 
 ### Prerequisites
 
-- Node.js 20+
-- pnpm 9.15+
+- **Node.js** 20+
+- **pnpm** 9.15+
 
-### Installation
+### Install & Run
 
 ```bash
-# Clone repository
-git clone https://github.com/YOUR_USERNAME/vibepilot.git
+# Clone
+git clone https://github.com/nicokimmel/vibepilot.git
 cd vibepilot
 
 # Install dependencies
 pnpm install
 
-# Build protocol (required first)
+# Build the protocol package (required before running agent/web)
 pnpm --filter protocol build
-```
 
-### Development
-
-```bash
-# Terminal 1: Start agent (backend)
+# Terminal 1: Start the agent (backend)
 pnpm --filter agent dev
 # → Agent listening on ws://localhost:9800
 
-# Terminal 2: Start web (frontend)
+# Terminal 2: Start the web app (frontend)
 pnpm --filter web dev
 # → Next.js on http://localhost:3000
 ```
 
-Open http://localhost:3000 — your terminal is ready! Try:
-1. Click "New Terminal" button
-2. Run commands (e.g., `ls`, `git status`)
-3. **Refresh the page** → terminal session automatically restores
-4. Browse files in left sidebar → click to open in Monaco editor
+Open http://localhost:3000 and you're ready to go:
+
+1. A terminal tab opens automatically
+2. Run commands (`ls`, `git status`, `npm install`, etc.)
+3. **Refresh the page** — your terminal session restores automatically
+4. Browse files in the left sidebar, click to open in the editor
+5. Drag & drop images into the window to transfer them
+
+---
+
+## Deployment Modes
+
+VibePilot supports three deployment modes, from zero-config local use to authenticated cloud access.
+
+### 1. Local Mode (default)
+
+No authentication. The agent and web app run on the same machine.
+
+```bash
+# Start agent
+vibepilot serve --port 9800 --dir ~/projects
+
+# Set in apps/web/.env.local
+NEXT_PUBLIC_AUTH_MODE=none
+```
+
+### 2. Token Mode
+
+Shared secret authentication. Suitable for a single user accessing their machine remotely.
+
+```bash
+# Start agent with a token
+vibepilot serve --token my-secret-token --public-url wss://myserver.com:9800
+
+# Set in apps/web/.env.local
+NEXT_PUBLIC_AUTH_MODE=token
+```
+
+The web app shows a token input screen. Enter the same token to connect.
+
+### 3. Supabase Cloud Mode
+
+Full authentication with email/password, GitHub OAuth, and Google OAuth. Supports multiple users, each managing their own agents.
+
+```bash
+# Start agent with Supabase credentials
+vibepilot serve \
+  --supabase-url https://your-project.supabase.co \
+  --supabase-key eyJ...your-service-role-key
+
+# Set in apps/web/.env.local
+NEXT_PUBLIC_AUTH_MODE=supabase
+NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...your-anon-key
+```
+
+The web app shows a login screen with email/password and OAuth options. After login, users select from their registered agents.
+
+**Setup steps:**
+
+1. Create a [Supabase](https://supabase.com) project
+2. Run the migration in `supabase/migrations/001_agents_table.sql` via the SQL editor
+3. Enable desired OAuth providers in Supabase Dashboard > Authentication > Providers
+4. Copy your project URL, anon key, and service role key to the environment variables
+
+---
+
+## CLI Reference
+
+### `vibepilot serve`
+
+Start the agent server.
+
+| Option                            | Default                    | Description                                  |
+| --------------------------------- | -------------------------- | -------------------------------------------- |
+| `-p, --port <number>`             | `9800`                     | WebSocket server port                        |
+| `-d, --dir <path>`                | Current directory          | Working directory for PTY sessions           |
+| `-t, --session-timeout <seconds>` | `300`                      | PTY session timeout after disconnect         |
+| `--token <token>`                 | —                          | Enable token authentication                  |
+| `--agent-name <name>`             | Hostname                   | Display name in agent selector               |
+| `--public-url <url>`              | —                          | Public WebSocket URL for registry            |
+| `--registry-path <path>`          | `~/.vibepilot/agents.json` | File-based agent registry path               |
+| `--supabase-url <url>`            | —                          | Supabase project URL (enables Supabase mode) |
+| `--supabase-key <key>`            | —                          | Supabase service role key                    |
+
+Environment variable equivalents: `VP_TOKEN`, `VP_AGENT_NAME`, `VP_PUBLIC_URL`, `VP_REGISTRY_PATH`, `VP_SUPABASE_URL`, `VP_SUPABASE_KEY`.
+
+### `vibepilot project:add <name> [path]`
+
+Add a project to the agent's project list.
+
+| Option              | Description                  |
+| ------------------- | ---------------------------- |
+| `-f, --favorite`    | Mark as favorite             |
+| `-c, --color <hex>` | Color code (e.g., `#3b82f6`) |
+| `-t, --tags <tags>` | Comma-separated tags         |
+
+### `vibepilot project:list`
+
+List all registered projects. Use `--json` for machine-readable output.
+
+### `vibepilot project:remove <projectId>`
+
+Remove a project by ID (first 8 characters are sufficient).
+
+---
+
+## Project Structure
+
+```
+vibepilot/
+├── packages/
+│   ├── protocol/                # @vibepilot/protocol — shared message types
+│   │   ├── src/
+│   │   │   ├── constants.ts     # 29 message type constants
+│   │   │   ├── messages.ts      # Type-safe payload interfaces + createMessage()
+│   │   │   └── types.ts         # VPMessage envelope type
+│   │   └── __tests__/           # 25 tests
+│   │
+│   └── agent/                   # @vibepilot/agent — Node.js backend
+│       ├── bin/vibepilot.ts     # CLI entry point (Commander.js)
+│       ├── src/
+│       │   ├── transport/       # WebSocketServer, WebRTCPeer, SignalingHandler
+│       │   ├── pty/             # PtyManager, SessionPersistenceManager,
+│       │   │                    # OutputDelegate, CircularBuffer
+│       │   ├── fs/              # FileTreeService, FileContentService, FileWatcher
+│       │   ├── config/          # ProjectManager, ProjectValidator
+│       │   ├── auth/            # AuthProvider, TokenAuthProvider,
+│       │   │                    # SupabaseAuthProvider
+│       │   ├── registry/        # AgentRegistry, FileSystemRegistry,
+│       │   │                    # SupabaseRegistry
+│       │   └── image/           # ImageReceiver
+│       └── __tests__/           # 205 tests
+│
+├── apps/
+│   └── web/                     # @vibepilot/web — Next.js 15 frontend
+│       ├── src/
+│       │   ├── app/             # Next.js App Router pages
+│       │   ├── components/
+│       │   │   ├── terminal/    # TerminalInstance, TerminalSplitLayout
+│       │   │   ├── editor/      # EditorPanel, MonacoEditor, ImagePreview
+│       │   │   ├── filetree/    # FileTreePanel, FileTreeNode
+│       │   │   ├── connection/  # ConnectionStatus, DevicePicker,
+│       │   │   │                # TokenLoginScreen, SupabaseLoginScreen,
+│       │   │   │                # AgentSelectorScreen
+│       │   │   ├── project/     # ProjectSelectorModal, ProjectCard
+│       │   │   ├── tabs/        # TabBar (unified terminal + editor)
+│       │   │   ├── layout/      # AppShell, Sidebar, StatusBar
+│       │   │   └── image/       # ImageDropZone
+│       │   ├── stores/          # 8 Zustand stores
+│       │   ├── hooks/           # useTerminal, useKeyboardShortcuts, usePWA
+│       │   └── lib/             # websocket, webrtc, transport, supabase
+│       └── __tests__/           # 176 tests
+│
+├── signaling-server/            # Standalone WebRTC signaling relay
+│
+├── supabase/
+│   └── migrations/              # SQL migrations for Supabase Cloud mode
+│
+├── docker-compose.yml           # Local deployment (agent + web + signaling)
+├── docker-compose.cloud.yml     # Cloud overlay (+ Caddy HTTPS + Supabase env)
+├── Caddyfile                    # Caddy reverse proxy config
+└── .env.example                 # All environment variables documented
+```
+
+---
+
+## Features
+
+### Terminal
+
+- **Multi-tab** — Create multiple terminal sessions, rename tabs, navigate with Ctrl+Tab
+- **Split layouts** — Single, horizontal split, vertical split, or quad (4 terminals)
+- **Session persistence** — On browser disconnect, PTY output is buffered in a circular buffer (100KB). On reconnect, buffered output replays automatically. Configurable timeout (default: 5 minutes).
+- **CWD tracking** — Each terminal tracks its current working directory in real-time
+- **Keyboard shortcuts** — Ctrl+Shift+T (new tab), Ctrl+Shift+W (close tab), Ctrl+Tab / Ctrl+Shift+Tab (switch tabs)
+
+### Editor
+
+- **Monaco Editor** — Powered by VS Code's editor engine with IntelliSense-ready API
+- **100+ languages** — Automatic language detection from file extension
+- **Dirty state tracking** — Visual indicator for unsaved changes
+- **Image preview** — Open images directly in the editor panel
+- **Save** — Ctrl+S / Cmd+S to write files back to the agent
+
+### File Tree
+
+- **Lazy loading** — Directories load on demand for performance
+- **Real-time updates** — File system changes appear instantly via chokidar
+- **Smart filtering** — Automatically hides `node_modules`, `.git`, `dist`, `.next`, `.turbo`, `coverage`, `.DS_Store`
+- **Click to open** — Files open in the editor, seamlessly switching panes
+
+### Image Transfer
+
+- **Drag & drop** — Drop PNG, JPEG, GIF, WebP, or PDF files anywhere in the UI
+- **Chunked transfer** — Large files are split into 63KB chunks for reliable delivery
+- **Visual feedback** — Drop zone overlay indicates active drag state
+
+### Transport Layer
+
+- **WebRTC preferred** — Automatic upgrade to WebRTC data channels for low-latency terminal I/O
+- **WebSocket fallback** — Graceful degradation when WebRTC is unavailable
+- **Auto-reconnect** — 3-second reconnect delay on connection loss
+- **Status indicators** — Real-time display of active transport (WS/WebRTC) in the status bar
+
+### Project Management
+
+- **Multi-project** — Register multiple projects, switch between them without restarting
+- **Project metadata** — Name, path, favorite flag, color, and tags
+- **Search & filter** — Find projects by name, path, or tags in the selector modal
+- **Keyboard navigation** — Arrow keys and Enter in the project selector
+- **Persistence** — Last selected project is restored on reconnect
+
+### Authentication & Cloud
+
+- **Three modes** — None (local), Token (shared secret), Supabase (OAuth + email)
+- **Agent selector** — In auth mode, users can save and switch between multiple agents
+- **Supabase OAuth** — GitHub and Google sign-in with one click
+- **JWT verification** — Agent verifies Supabase JWTs via JWKS endpoint (no shared secrets)
+- **Row Level Security** — Each user can only see and manage their own agents
+
+### PWA
+
+- **Installable** — Add to home screen / install as desktop app
+- **Offline caching** — Service worker caches core assets for offline access
+- **Standalone mode** — Runs in its own window without browser chrome
+
+---
+
+## Environment Variables
+
+Copy `.env.example` to `.env` (or `apps/web/.env.local` for the web app) and configure:
+
+### Web App (`NEXT_PUBLIC_*`)
+
+| Variable                        | Default               | Description                               |
+| ------------------------------- | --------------------- | ----------------------------------------- |
+| `NEXT_PUBLIC_WS_URL`            | `ws://localhost:9800` | Agent WebSocket URL                       |
+| `NEXT_PUBLIC_SIGNALING_URL`     | `ws://localhost:9801` | WebRTC signaling server                   |
+| `NEXT_PUBLIC_AUTH_MODE`         | `none`                | Auth mode: `none`, `token`, or `supabase` |
+| `NEXT_PUBLIC_SUPABASE_URL`      | —                     | Supabase project URL                      |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | —                     | Supabase anon/public key                  |
+
+### Agent
+
+| Variable           | Default                    | Description                          |
+| ------------------ | -------------------------- | ------------------------------------ |
+| `PORT`             | `9800`                     | WebSocket server port                |
+| `SESSION_TIMEOUT`  | `300`                      | PTY timeout in seconds               |
+| `VP_TOKEN`         | —                          | Auth token (enables token mode)      |
+| `VP_AGENT_NAME`    | Hostname                   | Display name for agent registry      |
+| `VP_PUBLIC_URL`    | —                          | Public WSS URL for agent             |
+| `VP_REGISTRY_PATH` | `~/.vibepilot/agents.json` | File-based registry path             |
+| `VP_SUPABASE_URL`  | —                          | Supabase URL (enables Supabase mode) |
+| `VP_SUPABASE_KEY`  | —                          | Supabase service role key            |
+
+---
+
+## Testing
+
+VibePilot uses [Vitest](https://vitest.dev/) with strict TDD methodology.
+
+```bash
+# Run all tests (414 tests across 44 files)
+pnpm test
+
+# Run tests for a specific package
+pnpm --filter protocol test    # 25 tests
+pnpm --filter agent test       # 205 tests
+pnpm --filter web test         # 176 tests
+
+# Run a single test file
+pnpm --filter agent test -- --run __tests__/pty/PtyManager.test.ts
+
+# Watch mode
+pnpm test:watch
+
+# Coverage report
+pnpm test:coverage
+
+# E2E tests (Playwright)
+pnpm --filter web test:e2e
+```
+
+**Testing patterns:**
+
+- **Protocol:** Pure unit tests for message creation and parsing
+- **Agent:** Real filesystem (temp dirs), mocked `node-pty`, mocked `fetch` for Supabase
+- **Web stores:** Mock `transportManager` with `vi.mock()`, `_trigger` helper for simulating messages
+- **Web components:** Mock stores with `vi.mock('@/stores/...')`, `@testing-library/react`
+- **Integration:** Random ports (19800+) to avoid conflicts, `connectClient`/`waitForMessage` helpers
+
+---
+
+## Docker Deployment
+
+### Local (no auth)
+
+```bash
+docker compose up -d
+```
+
+This starts the agent (port 9800), signaling server (port 9900), and web app (port 3000).
+
+### Cloud (with Supabase + HTTPS)
+
+```bash
+# 1. Configure environment
+cp .env.example .env
+# Edit .env with your Supabase credentials and domain
+
+# 2. Start with cloud overlay
+docker compose -f docker-compose.yml -f docker-compose.cloud.yml up -d
+```
+
+This adds Caddy for automatic HTTPS and injects Supabase environment variables.
 
 ### Production Build
 
@@ -87,231 +445,105 @@ Open http://localhost:3000 — your terminal is ready! Try:
 # Build all packages
 pnpm build
 
-# Run agent
+# Start agent
 pnpm --filter agent start
 
-# Run web (or deploy to Vercel/Netlify)
+# Start web (or deploy to Vercel/Netlify/Cloudflare Pages)
 pnpm --filter web start
 ```
 
-### CLI Options
-
-```bash
-# Agent server
-vibepilot serve \
-  --port 9800 \
-  --dir /path/to/workspace \
-  --session-timeout 300  # seconds (default: 5 minutes)
-```
-
-## Project Structure
-
-```
-vibepilot/
-├── packages/
-│   ├── protocol/          # @vibepilot/protocol
-│   │   ├── src/
-│   │   │   ├── constants.ts   # Message types (29 types)
-│   │   │   ├── messages.ts    # Type-safe payload definitions
-│   │   │   └── types.ts       # Shared types
-│   │   └── __tests__/         # 25 tests
-│   │
-│   └── agent/             # @vibepilot/agent
-│       ├── bin/
-│       │   └── vibepilot.ts   # CLI entry
-│       ├── src/
-│       │   ├── pty/           # PTY session management
-│       │   │   ├── PtyManager.ts
-│       │   │   ├── SessionPersistenceManager.ts
-│       │   │   ├── OutputDelegate.ts  # Switchable output sink
-│       │   │   └── CircularBuffer.ts  # Output buffering
-│       │   ├── transport/     # WebSocket + WebRTC
-│       │   ├── fs/            # File system services
-│       │   ├── config/        # Project management
-│       │   └── image/         # Image transfer
-│       └── __tests__/         # 117 tests
-│
-├── apps/
-│   └── web/               # @vibepilot/web
-│       ├── src/
-│       │   ├── app/           # Next.js 15 app router
-│       │   ├── components/    # React components
-│       │   ├── stores/        # Zustand state (5 stores)
-│       │   ├── hooks/         # Custom hooks
-│       │   └── lib/           # Transport layer
-│       └── __tests__/         # 152 tests
-│
-└── signaling-server/      # WebRTC signaling relay
-    ├── src/
-    │   └── index.ts       # Standalone WebSocket server
-    └── __tests__/
-```
-
-## Key Features
-
-### 1. Session Persistence
-
-Terminals survive browser disconnects:
-- **On disconnect:** PTY detaches output → buffered for 5 minutes
-- **On reconnect:** Frontend sends `terminal:attach` → buffered output replayed
-- **Timeout:** After 5 min, PTY automatically destroyed
-
-Implementation: `SessionPersistenceManager` + `OutputDelegate` pattern.
-
-### 2. Transport Layer
-
-```typescript
-// Automatic WebRTC upgrade for performance
-transportManager.send(MessageType.TERMINAL_INPUT, {
-  sessionId,
-  data: 'ls\r'
-});
-// → WebRTC data channel (if connected)
-// → Falls back to WebSocket
-```
-
-- **WebSocket:** Control plane + fallback
-- **WebRTC:** High-throughput terminal I/O and file transfers
-- Automatic negotiation via signaling server
-
-### 3. Type-Safe Protocol
-
-```typescript
-// Compile-time type checking
-const msg = createMessage(MessageType.TERMINAL_CREATED, {
-  sessionId: 'sess-1',
-  pid: 12345,
-  // ❌ TypeScript error if fields missing/wrong type
-});
-```
-
-Zero runtime dependencies. Message ID generation: `${Date.now()}-${counter}`.
-
-### 4. File System Integration
-
-- **Real-time monitoring:** Chokidar watches workspace
-- **Lazy loading:** File tree loads on-demand (depth-first)
-- **Ignored patterns:** `node_modules`, `.git`, `dist`, `.next`, `.turbo`, `coverage`
-- **Monaco Editor:** Syntax highlighting for 100+ languages
-
-## Testing
-
-```bash
-# Run all tests (294 tests)
-pnpm test
-
-# Package-specific
-pnpm --filter protocol test  # 25 tests
-pnpm --filter agent test     # 117 tests
-pnpm --filter web test       # 152 tests
-
-# Watch mode
-pnpm test:watch
-
-# E2E tests (Playwright)
-pnpm --filter web test:e2e
-```
-
-Coverage: Protocol (100%), Agent (85%), Web (78%).
-
-## Environment Variables
-
-Create `.env.local` in `apps/web/`:
-
-```bash
-# WebSocket URL (default: ws://localhost:9800)
-NEXT_PUBLIC_WS_URL=ws://your-agent-server:9800
-
-# Signaling server (for WebRTC, optional)
-NEXT_PUBLIC_SIGNALING_URL=ws://your-signaling:9801
-```
-
-Agent environment:
-```bash
-# Port (default: 9800)
-PORT=9800
-
-# Session timeout in seconds (default: 300)
-SESSION_TIMEOUT=300
-```
+---
 
 ## Tech Stack
 
-**Frontend:**
-- Next.js 15 (React 19, App Router, Turbopack)
-- xterm.js (terminal emulation)
-- Monaco Editor (code editing)
-- Zustand (state management)
-- Tailwind CSS 4
-
-**Backend:**
-- Node.js 20+
-- node-pty (PTY sessions)
-- ws (WebSocket server)
-- node-datachannel (WebRTC)
-- chokidar (file watching)
-
-**Tooling:**
-- pnpm workspaces + Turbo (monorepo)
-- TypeScript 5.7 (strict mode)
-- Vitest 3 (testing)
-- Playwright (E2E)
-
-## Performance
-
-- **Startup:** < 1s (Turbopack dev mode)
-- **Terminal latency:** < 10ms (WebRTC)
-- **File tree:** Lazy loaded (< 100ms per depth level)
-- **Build size:** 104 KB First Load JS (web)
-
-## Browser Support
-
-- Chrome/Edge 90+ (WebRTC required)
-- Firefox 88+
-- Safari 15+
-
-Mobile browsers not officially supported (desktop-focused UI).
-
-## Security
-
-- **Path validation:** FileTreeService checks all paths are within workspace
-- **No shell injection:** Commander.js handles CLI args safely
-- **WebRTC encryption:** DTLS/SRTP by default
-- **Session isolation:** Each terminal session is sandboxed
-
-## Contributing
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, code style, and PR process.
-
-## License
-
-Business Source License 1.1 — See [LICENSE](LICENSE)
-
-**TL;DR:** Free for personal/non-commercial use. Commercial use requires a license. Converts to Apache 2.0 after Change Date.
-
-## Roadmap
-
-- [ ] Multi-user collaboration (shared terminals)
-- [ ] SSH remote connection support
-- [ ] Plugin system for custom commands
-- [ ] Vim mode for terminal
-- [ ] Mobile responsive design
-- [ ] Docker container distribution
-
-## Credits
-
-Built with:
-- [xterm.js](https://xtermjs.org/) — Terminal emulation
-- [Monaco Editor](https://microsoft.github.io/monaco-editor/) — Code editing
-- [node-pty](https://github.com/microsoft/node-pty) — PTY bindings
-- [node-datachannel](https://github.com/paullouisageneau/libdatachannel) — WebRTC
-
-## Support
-
-- **Issues:** [GitHub Issues](https://github.com/YOUR_USERNAME/vibepilot/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/YOUR_USERNAME/vibepilot/discussions)
-- **Security:** See [SECURITY.md](SECURITY.md)
+| Layer             | Technology                                   |
+| ----------------- | -------------------------------------------- |
+| **Frontend**      | Next.js 15, React 19, TypeScript 5.7         |
+| **Terminal**      | xterm.js, xterm-addon-fit                    |
+| **Editor**        | Monaco Editor (@monaco-editor/react)         |
+| **State**         | Zustand (8 stores)                           |
+| **Styling**       | Tailwind CSS 4                               |
+| **Layout**        | react-resizable-panels                       |
+| **Backend**       | Node.js 20+, Commander.js                    |
+| **PTY**           | node-pty                                     |
+| **WebSocket**     | ws                                           |
+| **WebRTC**        | node-datachannel                             |
+| **File watching** | chokidar                                     |
+| **Auth**          | jose (JWT/JWKS), @supabase/supabase-js       |
+| **Protocol**      | @vibepilot/protocol (zero deps)              |
+| **Build**         | pnpm workspaces, Turborepo                   |
+| **Testing**       | Vitest 3, @testing-library/react, Playwright |
+| **Linting**       | ESLint 9, Prettier 3                         |
+| **CI/CD**         | husky, lint-staged                           |
+| **Deployment**    | Docker, Caddy 2                              |
 
 ---
 
-Made with ⚡ by [Your Name]
+## Security
+
+- **Path validation** — All file operations are validated to stay within the workspace root
+- **Authentication** — Pluggable auth with timing-safe token comparison and JWKS JWT verification
+- **Row Level Security** — Supabase RLS ensures user isolation at the database level
+- **Transport encryption** — WebRTC uses DTLS/SRTP; WSS recommended for production
+- **Session isolation** — Each PTY session is sandboxed to its workspace
+- **Input validation** — Project paths checked against forbidden system directories
+- **Auto HTTPS** — Caddy provides automatic TLS certificate management
+
+For vulnerability reporting, see [SECURITY.md](SECURITY.md).
+
+---
+
+## Contributing
+
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for:
+
+- Development setup
+- TDD workflow (Red → Green → Refactor)
+- Code style conventions
+- Commit message format (Conventional Commits)
+- PR review process
+
+```bash
+# Quick dev setup
+pnpm install
+pnpm --filter protocol build
+pnpm test  # Verify everything passes before making changes
+```
+
+---
+
+## License
+
+[Business Source License 1.1](LICENSE)
+
+- **Free** for personal, educational, and non-commercial use
+- **Commercial use** requires a license from YOMOO LLC
+- **Converts to Apache 2.0** on the Change Date (2030-02-08)
+
+---
+
+## Roadmap
+
+- [x] Terminal with session persistence
+- [x] Monaco Editor with file system integration
+- [x] WebRTC acceleration
+- [x] Multi-project management
+- [x] Token authentication
+- [x] Supabase Cloud mode (OAuth, agent registry, RLS)
+- [x] Docker deployment with auto HTTPS
+- [x] PWA support
+- [ ] Multi-user collaboration (shared terminals)
+- [ ] SSH remote connection support
+- [ ] Plugin system for custom commands
+- [ ] Mobile responsive design
+- [ ] VS Code extension
+
+---
+
+## Credits
+
+Built with [xterm.js](https://xtermjs.org/), [Monaco Editor](https://microsoft.github.io/monaco-editor/), [node-pty](https://github.com/microsoft/node-pty), [node-datachannel](https://github.com/murat-aspect/node-datachannel), [Supabase](https://supabase.com), and [Caddy](https://caddyserver.com).
+
+---
+
+&copy; 2024-2026 YOMOO LLC. All rights reserved.
