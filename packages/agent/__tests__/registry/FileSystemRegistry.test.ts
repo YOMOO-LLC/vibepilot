@@ -150,6 +150,32 @@ describe('FileSystemRegistry', () => {
       const agents = await registry.listByOwner('nobody');
       expect(agents).toEqual([]);
     });
+
+    it('returns empty array when file does not exist', async () => {
+      // Create a new registry with a non-existent file
+      const nonExistentPath = path.join(tmpDir, 'never-created.json');
+      const freshRegistry = new FileSystemRegistry(nonExistentPath);
+
+      const agents = await freshRegistry.listByOwner('user-1');
+      expect(agents).toEqual([]);
+    });
+
+    it('returns copies not references', async () => {
+      await registry.register({
+        name: 'Original',
+        publicUrl: 'wss://test.com:9800',
+        ownerId: 'user-1',
+      });
+
+      const agents = await registry.listByOwner('user-1');
+      expect(agents).toHaveLength(1);
+
+      // Mutating the returned array should not affect stored data
+      agents[0].name = 'Modified';
+
+      const refetched = await registry.listByOwner('user-1');
+      expect(refetched[0].name).toBe('Original');
+    });
   });
 
   describe('get', () => {
@@ -169,6 +195,23 @@ describe('FileSystemRegistry', () => {
     it('returns null for unknown ID', async () => {
       const found = await registry.get('nonexistent');
       expect(found).toBeNull();
+    });
+
+    it('returns a copy not a reference', async () => {
+      const agent = await registry.register({
+        name: 'Test',
+        publicUrl: 'wss://test.com:9800',
+        ownerId: 'user-1',
+      });
+
+      const found = await registry.get(agent.id);
+      expect(found).not.toBe(agent);
+
+      // Mutating the returned object should not affect the stored agent
+      found!.name = 'Modified';
+
+      const refetched = await registry.get(agent.id);
+      expect(refetched!.name).toBe('Test');
     });
   });
 

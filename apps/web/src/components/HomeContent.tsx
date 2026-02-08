@@ -5,6 +5,8 @@ import { TerminalSplitLayout } from '@/components/terminal/TerminalSplitLayout';
 import { ConnectionStatus } from '@/components/connection/ConnectionStatus';
 import { DevicePicker } from '@/components/connection/DevicePicker';
 import { ProjectSwitcher } from '@/components/connection/ProjectSwitcher';
+import { TokenLoginScreen } from '@/components/connection/TokenLoginScreen';
+import { AgentSelectorScreen } from '@/components/connection/AgentSelectorScreen';
 import { AppShell } from '@/components/layout/AppShell';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { StatusBar } from '@/components/layout/StatusBar';
@@ -18,7 +20,11 @@ import { useConnectionStore } from '@/stores/connectionStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 import { useProjectStore } from '@/stores/projectStore';
 import { useFileTreeStore } from '@/stores/fileTreeStore';
+import { useAuthStore } from '@/stores/authStore';
+import { useAgentStore } from '@/stores/agentStore';
 import { ProjectSelectorModal } from '@/components/project/ProjectSelectorModal';
+
+const AUTH_MODE = process.env.NEXT_PUBLIC_AUTH_MODE || 'none';
 
 export default function HomeContent() {
   useKeyboardShortcuts();
@@ -31,20 +37,60 @@ export default function HomeContent() {
     projects,
     currentProject,
     loading: projectLoading,
-    showSelector,
+    showSelector: showProjectSelector,
     selectorError,
     selectProject,
     restoreLastProject,
     loadProjects,
   } = useProjectStore();
   const { setRoot } = useFileTreeStore();
+  const { isAuthenticated, restoreSession } = useAuthStore();
+  const {
+    agents,
+    selectedAgent,
+    showSelector: showAgentSelector,
+    loadAgents,
+    selectAgent,
+    restoreLastAgent,
+  } = useAgentStore();
 
-  // Auto-connect on mount
+  // Determine if auth is required
+  const needsAuth = AUTH_MODE !== 'none';
+  const isAuthed = !needsAuth || isAuthenticated;
+
+  // Step 1: Restore session on mount
   useEffect(() => {
-    connect();
-  }, []);
+    if (needsAuth) {
+      restoreSession();
+    }
+  }, [needsAuth, restoreSession]);
 
-  // 连接后加载项目或恢复上次选择
+  // Step 2: Once authenticated, load agents
+  useEffect(() => {
+    if (!isAuthed) return;
+
+    if (needsAuth) {
+      loadAgents();
+      restoreLastAgent();
+    }
+  }, [isAuthed, needsAuth, loadAgents, restoreLastAgent]);
+
+  // Step 3: Connect to the selected agent (or default URL)
+  useEffect(() => {
+    if (!isAuthed) return;
+
+    if (needsAuth) {
+      // Cloud mode: connect to the selected agent URL
+      if (selectedAgent) {
+        connect(selectedAgent.url);
+      }
+    } else {
+      // Local mode: auto-connect to default URL
+      connect();
+    }
+  }, [isAuthed, needsAuth, selectedAgent, connect]);
+
+  // Step 4: Once connected, load projects
   useEffect(() => {
     if (connectionState === 'connected') {
       const restored = restoreLastProject();
@@ -54,12 +100,11 @@ export default function HomeContent() {
     }
   }, [connectionState, restoreLastProject, loadProjects]);
 
-  // 项目选择后初始化工作区
+  // Step 5: Once project selected, initialize workspace
   useEffect(() => {
     if (currentProject && connectionState === 'connected') {
       setRoot(currentProject.path);
 
-      // 创建首个终端
       if (tabs.length === 0) {
         createTab();
         const newTabs = useTerminalStore.getState().tabs;
@@ -70,24 +115,36 @@ export default function HomeContent() {
     }
   }, [currentProject, connectionState, tabs.length, createTab, setActivePane, setRoot]);
 
+  // --- Render gates ---
+
+  // Gate 1: Login screen (only in auth mode)
+  if (needsAuth && !isAuthenticated) {
+    return <TokenLoginScreen />;
+  }
+
+  // Gate 2: Agent selector (only in auth mode, when no agent selected)
+  if (needsAuth && (showAgentSelector || (!selectedAgent && agents.length !== 1))) {
+    return <AgentSelectorScreen />;
+  }
+
   const isTerminalActive = activePane?.kind === 'terminal' || activePane === null;
   const isEditorActive = activePane?.kind === 'editor';
 
   return (
     <ImageDropZone>
-      {/* 项目选择器 - 阻塞模态框 */}
+      {/* Gate 3: Project selector */}
       <ProjectSelectorModal
-        open={showSelector && connectionState === 'connected'}
+        open={showProjectSelector && connectionState === 'connected'}
         projects={projects}
         loading={projectLoading}
         error={selectorError}
         onSelectProject={selectProject}
       />
 
-      {/* 主应用 - 选择器打开时隐藏 */}
+      {/* Main app */}
       <div
         className="flex flex-col h-screen bg-zinc-950 text-zinc-100"
-        style={{ display: showSelector ? 'none' : 'flex' }}
+        style={{ display: showProjectSelector ? 'none' : 'flex' }}
       >
         {/* Header */}
         <header className="flex items-center justify-between px-4 py-2 border-b border-zinc-800">
