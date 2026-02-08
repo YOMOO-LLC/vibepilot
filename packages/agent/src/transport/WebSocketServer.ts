@@ -1,4 +1,7 @@
 import { WebSocketServer, WebSocket } from 'ws';
+import { createServer, type Server as HttpServer, type IncomingMessage } from 'http';
+import type { Duplex } from 'stream';
+import type { AuthProvider } from '../auth/AuthProvider.js';
 import {
   MessageType,
   createMessage,
@@ -35,6 +38,7 @@ export interface VPWebSocketServerOptions {
   port: number;
   cwd?: string;
   sessionTimeoutMs?: number;
+  authProvider?: AuthProvider;
 }
 
 interface ClientState {
@@ -51,12 +55,16 @@ interface SessionOwner {
 
 export class VPWebSocketServer {
   private wss: WebSocketServer | null = null;
+  private httpServer: HttpServer | null = null;
   private ptyManager = new PtyManager();
   private sessionPersistence: SessionPersistenceManager;
   private fileTreeService: FileTreeService;
   private fileWatcher: FileWatcher;
   private clients = new Map<WebSocket, ClientState>();
-  private cwdTrackers = new Map<string, { timer: ReturnType<typeof setInterval>; lastCwd: string }>();
+  private cwdTrackers = new Map<
+    string,
+    { timer: ReturnType<typeof setInterval>; lastCwd: string }
+  >();
   private sessionOwners = new Map<string, SessionOwner>();
   private port: number;
   private cwd: string;
@@ -64,6 +72,7 @@ export class VPWebSocketServer {
   private fileContentService = new FileContentService();
   private imageReceiver = new ImageReceiver();
   private imageSessionMap = new Map<string, string>(); // transferId → sessionId
+  private authProvider?: AuthProvider;
 
   constructor(options: VPWebSocketServerOptions) {
     this.port = options.port;
@@ -71,6 +80,7 @@ export class VPWebSocketServer {
     this.fileTreeService = new FileTreeService(this.cwd);
     this.fileWatcher = new FileWatcher(this.cwd);
     this.projectManager = new ProjectManager();
+    this.authProvider = options.authProvider;
     this.sessionPersistence = new SessionPersistenceManager(this.ptyManager, {
       timeoutMs: options.sessionTimeoutMs,
     });
@@ -81,12 +91,23 @@ export class VPWebSocketServer {
     await this.imageReceiver.init();
 
     return new Promise((resolve) => {
-      this.wss = new WebSocketServer({ port: this.port }, () => {
-        resolve();
+      this.httpServer = createServer((_req, res) => {
+        res.writeHead(426, { 'Content-Type': 'text/plain' });
+        res.end('WebSocket connection required');
       });
+
+      this.wss = new WebSocketServer({ noServer: true });
 
       this.wss.on('connection', (ws) => {
         this.handleConnection(ws);
+      });
+
+      this.httpServer.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
+        this.handleUpgrade(req, socket, head);
+      });
+
+      this.httpServer.listen(this.port, () => {
+        resolve();
       });
 
       // Start file watcher and broadcast changes to all clients
@@ -115,9 +136,53 @@ export class VPWebSocketServer {
       }
       this.wss.close(() => {
         this.wss = null;
-        resolve();
+        if (this.httpServer) {
+          this.httpServer.close(() => {
+            this.httpServer = null;
+            resolve();
+          });
+        } else {
+          resolve();
+        }
       });
     });
+  }
+
+  private async handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
+    // If no auth provider, accept all connections
+    if (!this.authProvider) {
+      this.wss!.handleUpgrade(req, socket, head, (ws) => {
+        this.wss!.emit('connection', ws, req);
+      });
+      return;
+    }
+
+    // Extract token from URL query parameter
+    const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
+    const token = url.searchParams.get('token');
+
+    if (!token) {
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
+    try {
+      const result = await this.authProvider.verify(token);
+      if (!result.success) {
+        socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+
+      // Auth passed — complete the WebSocket upgrade
+      this.wss!.handleUpgrade(req, socket, head, (ws) => {
+        this.wss!.emit('connection', ws, req);
+      });
+    } catch {
+      socket.write('HTTP/1.1 500 Internal Server Error\r\n\r\n');
+      socket.destroy();
+    }
   }
 
   private handleConnection(ws: WebSocket): void {
@@ -139,11 +204,7 @@ export class VPWebSocketServer {
     });
   }
 
-  private handleMessage(
-    ws: WebSocket,
-    state: ClientState,
-    msg: VPMessage
-  ): void {
+  private handleMessage(ws: WebSocket, state: ClientState, msg: VPMessage): void {
     // Delegate signaling messages to SignalingHandler
     if (SignalingHandler.isSignalingMessage(msg.type)) {
       this.ensureSignalingHandler(ws, state);
@@ -358,7 +419,10 @@ export class VPWebSocketServer {
     const sendCwd = (cwd: string) => {
       const owner = this.sessionOwners.get(sessionId);
       if (owner && owner.ws.readyState === WebSocket.OPEN) {
-        const msg = createMessage(MessageType.TERMINAL_CWD, { sessionId, cwd } as TerminalCwdPayload);
+        const msg = createMessage(MessageType.TERMINAL_CWD, {
+          sessionId,
+          cwd,
+        } as TerminalCwdPayload);
         owner.ws.send(JSON.stringify(msg));
       }
     };
@@ -420,10 +484,7 @@ export class VPWebSocketServer {
     }
   }
 
-  private handleTerminalDestroy(
-    state: ClientState,
-    payload: TerminalDestroyPayload
-  ): void {
+  private handleTerminalDestroy(state: ClientState, payload: TerminalDestroyPayload): void {
     const { sessionId } = payload;
     this.stopCwdTracking(sessionId);
     this.ptyManager.destroy(sessionId);
@@ -455,10 +516,7 @@ export class VPWebSocketServer {
     }
   }
 
-  private async handleFileTreeList(
-    ws: WebSocket,
-    payload: FileTreeListPayload
-  ): Promise<void> {
+  private async handleFileTreeList(ws: WebSocket, payload: FileTreeListPayload): Promise<void> {
     try {
       const { path, depth = 1 } = payload;
       // Use a FileTreeService rooted at the requested path to allow listing any directory
@@ -479,10 +537,7 @@ export class VPWebSocketServer {
     }
   }
 
-  private async handleProjectSwitch(
-    ws: WebSocket,
-    payload: ProjectSwitchPayload
-  ): Promise<void> {
+  private async handleProjectSwitch(ws: WebSocket, payload: ProjectSwitchPayload): Promise<void> {
     try {
       const project = await this.projectManager.switchProject(payload.projectId);
 

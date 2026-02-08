@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { type ConnectionState } from '@/lib/websocket';
 import { type WebRTCState } from '@/lib/webrtc';
 import { transportManager, type TransportType } from '@/lib/transport';
+import { useAuthStore } from '@/stores/authStore';
 
 interface ConnectionStore {
   state: ConnectionState;
@@ -19,10 +20,14 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
   url: 'ws://localhost:9800',
 
   connect: (url?: string) => {
-    const connectUrl = url || get().url;
+    const baseUrl = url || get().url;
     if (url) {
-      set({ url: connectUrl });
+      set({ url: baseUrl });
     }
+
+    // Append auth token to WebSocket URL if available
+    const connectUrl = useAuthStore.getState().getWsUrl(baseUrl);
+
     transportManager.connect(
       connectUrl,
       (state) => {
