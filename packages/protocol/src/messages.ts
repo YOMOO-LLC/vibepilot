@@ -1,0 +1,223 @@
+import { MessageType, type MessageTypeValue } from './constants.js';
+import type { FileNode, TerminalSize, ProjectInfo } from './types.js';
+
+// Base message envelope
+export interface VPMessage<T extends string = string, P = unknown> {
+  type: T;
+  id: string;
+  timestamp: number;
+  payload: P;
+}
+
+// --- Terminal Messages ---
+
+export interface TerminalCreatePayload {
+  sessionId: string;
+  cols?: number;
+  rows?: number;
+  cwd?: string;
+  shell?: string;
+}
+
+export interface TerminalCreatedPayload {
+  sessionId: string;
+  pid: number;
+}
+
+export interface TerminalInputPayload {
+  sessionId: string;
+  data: string;
+}
+
+export interface TerminalOutputPayload {
+  sessionId: string;
+  data: string;
+}
+
+export interface TerminalResizePayload {
+  sessionId: string;
+  cols: number;
+  rows: number;
+}
+
+export interface TerminalDestroyPayload {
+  sessionId: string;
+}
+
+export interface TerminalDestroyedPayload {
+  sessionId: string;
+  exitCode?: number;
+}
+
+export interface TerminalCwdPayload {
+  sessionId: string;
+  cwd: string;
+}
+
+// --- File Tree Messages ---
+
+export interface FileTreeListPayload {
+  path: string;
+  depth?: number;
+}
+
+export interface FileTreeDataPayload {
+  path: string;
+  entries: FileNode[];
+}
+
+export interface FileTreeChangedPayload {
+  type: 'add' | 'change' | 'unlink' | 'addDir' | 'unlinkDir';
+  path: string;
+}
+
+// --- Image Messages ---
+
+export interface ImageStartPayload {
+  transferId: string;
+  sessionId: string;
+  filename: string;
+  totalSize: number;
+  mimeType: string;
+}
+
+export interface ImageChunkPayload {
+  transferId: string;
+  chunkIndex: number;
+  data: string; // base64
+}
+
+export interface ImageCompletePayload {
+  transferId: string;
+}
+
+export interface ImageSavedPayload {
+  transferId: string;
+  sessionId: string;
+  filePath: string;
+}
+
+// --- Signal Messages ---
+
+export interface SignalOfferPayload {
+  sdp: string;
+}
+
+export interface SignalAnswerPayload {
+  sdp: string;
+}
+
+export interface SignalCandidatePayload {
+  candidate: string;
+  sdpMid?: string;
+  sdpMLineIndex?: number;
+}
+
+// --- Project Messages ---
+
+export interface ProjectSwitchPayload {
+  projectId: string;
+}
+
+export interface ProjectSwitchedPayload {
+  project: ProjectInfo;
+}
+
+export interface ProjectListPayload {}
+
+export interface ProjectListDataPayload {
+  projects: ProjectInfo[];
+  currentProjectId: string | null;
+}
+
+// --- File Content Messages ---
+
+export interface FileReadPayload {
+  filePath: string;
+}
+
+export interface FileDataPayload {
+  filePath: string;
+  content: string;
+  encoding: 'utf-8' | 'base64';
+  language: string;
+  mimeType: string;
+  size: number;
+  readonly: boolean;
+}
+
+export interface FileWritePayload {
+  filePath: string;
+  content: string;
+  encoding: 'utf-8';
+}
+
+export interface FileWrittenPayload {
+  filePath: string;
+  size: number;
+}
+
+export interface FileErrorPayload {
+  filePath: string;
+  error: string;
+}
+
+// --- Message type map ---
+
+export interface MessagePayloadMap {
+  [MessageType.TERMINAL_CREATE]: TerminalCreatePayload;
+  [MessageType.TERMINAL_CREATED]: TerminalCreatedPayload;
+  [MessageType.TERMINAL_INPUT]: TerminalInputPayload;
+  [MessageType.TERMINAL_OUTPUT]: TerminalOutputPayload;
+  [MessageType.TERMINAL_RESIZE]: TerminalResizePayload;
+  [MessageType.TERMINAL_DESTROY]: TerminalDestroyPayload;
+  [MessageType.TERMINAL_DESTROYED]: TerminalDestroyedPayload;
+  [MessageType.TERMINAL_CWD]: TerminalCwdPayload;
+  [MessageType.FILETREE_LIST]: FileTreeListPayload;
+  [MessageType.FILETREE_DATA]: FileTreeDataPayload;
+  [MessageType.FILETREE_CHANGED]: FileTreeChangedPayload;
+  [MessageType.IMAGE_START]: ImageStartPayload;
+  [MessageType.IMAGE_CHUNK]: ImageChunkPayload;
+  [MessageType.IMAGE_COMPLETE]: ImageCompletePayload;
+  [MessageType.IMAGE_SAVED]: ImageSavedPayload;
+  [MessageType.SIGNAL_OFFER]: SignalOfferPayload;
+  [MessageType.SIGNAL_ANSWER]: SignalAnswerPayload;
+  [MessageType.SIGNAL_CANDIDATE]: SignalCandidatePayload;
+  [MessageType.PROJECT_SWITCH]: ProjectSwitchPayload;
+  [MessageType.PROJECT_SWITCHED]: ProjectSwitchedPayload;
+  [MessageType.PROJECT_LIST]: ProjectListPayload;
+  [MessageType.PROJECT_LIST_DATA]: ProjectListDataPayload;
+  [MessageType.FILE_READ]: FileReadPayload;
+  [MessageType.FILE_DATA]: FileDataPayload;
+  [MessageType.FILE_WRITE]: FileWritePayload;
+  [MessageType.FILE_WRITTEN]: FileWrittenPayload;
+  [MessageType.FILE_ERROR]: FileErrorPayload;
+}
+
+// --- Helper functions ---
+
+let counter = 0;
+
+function generateId(): string {
+  return `${Date.now()}-${++counter}`;
+}
+
+export function createMessage<T extends MessageTypeValue>(
+  type: T,
+  payload: T extends keyof MessagePayloadMap ? MessagePayloadMap[T] : unknown
+): VPMessage<T, typeof payload> {
+  return {
+    type,
+    id: generateId(),
+    timestamp: Date.now(),
+    payload,
+  };
+}
+
+export function parseMessage(data: string): VPMessage {
+  const msg = JSON.parse(data);
+  if (!msg.type || !msg.id || typeof msg.timestamp !== 'number') {
+    throw new Error('Invalid VPMessage format');
+  }
+  return msg;
+}

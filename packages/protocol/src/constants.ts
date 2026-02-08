@@ -1,0 +1,49 @@
+export const PROTOCOL_VERSION = '0.1.0';
+
+export const MessageType = {
+  // Terminal lifecycle
+  TERMINAL_CREATE: 'terminal:create',
+  TERMINAL_CREATED: 'terminal:created',
+  TERMINAL_INPUT: 'terminal:input',
+  TERMINAL_OUTPUT: 'terminal:output',
+  TERMINAL_RESIZE: 'terminal:resize',
+  TERMINAL_DESTROY: 'terminal:destroy',
+  TERMINAL_DESTROYED: 'terminal:destroyed',
+  TERMINAL_CWD: 'terminal:cwd',
+
+  // File tree
+  FILETREE_LIST: 'filetree:list',
+  FILETREE_DATA: 'filetree:data',
+  FILETREE_CHANGED: 'filetree:changed',
+
+  // Image transfer
+  IMAGE_START: 'image:start',
+  IMAGE_CHUNK: 'image:chunk',
+  IMAGE_COMPLETE: 'image:complete',
+  IMAGE_SAVED: 'image:saved',
+
+  // WebRTC signaling
+  SIGNAL_OFFER: 'signal:offer',
+  SIGNAL_ANSWER: 'signal:answer',
+  SIGNAL_CANDIDATE: 'signal:candidate',
+
+  // Project management
+  PROJECT_SWITCH: 'project:switch',
+  PROJECT_SWITCHED: 'project:switched',
+  PROJECT_LIST: 'project:list',
+  PROJECT_LIST_DATA: 'project:list-data',
+
+  // File content
+  FILE_READ: 'file:read',
+  FILE_DATA: 'file:data',
+  FILE_WRITE: 'file:write',
+  FILE_WRITTEN: 'file:written',
+  FILE_ERROR: 'file:error',
+} as const;
+
+export type MessageTypeValue = (typeof MessageType)[keyof typeof MessageType];
+
+export const DEFAULT_SHELL = process.env.SHELL || '/bin/bash';
+export const DEFAULT_PORT = 9800;
+export const DEFAULT_COLS = 80;
+export const DEFAULT_ROWS = 24;
