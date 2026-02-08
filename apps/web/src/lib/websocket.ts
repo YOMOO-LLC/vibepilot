@@ -3,12 +3,17 @@ import { parseMessage, createMessage, type VPMessage, type MessageTypeValue } fr
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected';
 export type MessageHandler = (msg: VPMessage) => void;
 
+const RECONNECT_DELAY_MS = 3000;
+
 export class VPWebSocketClient {
   private ws: WebSocket | null = null;
   private handlers = new Map<string, Set<MessageHandler>>();
   private globalHandlers = new Set<MessageHandler>();
   private _state: ConnectionState = 'disconnected';
   private onStateChange?: (state: ConnectionState) => void;
+  private reconnectUrl: string | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private shouldReconnect = false;
 
   get state(): ConnectionState {
     return this._state;
@@ -33,38 +38,19 @@ export class VPWebSocketClient {
     }
 
     this.onStateChange = onStateChange;
+    this.reconnectUrl = url;
+    this.shouldReconnect = true;
     this.setState('connecting');
 
-    const ws = new WebSocket(url);
-    this.ws = ws;
-
-    ws.onopen = () => {
-      if (this.ws !== ws) return; // stale instance
-      this.setState('connected');
-    };
-
-    ws.onclose = () => {
-      if (this.ws !== ws) return; // stale instance
-      this.setState('disconnected');
-      this.ws = null;
-    };
-
-    ws.onerror = () => {
-      // onclose will fire after this
-    };
-
-    ws.onmessage = (event) => {
-      if (this.ws !== ws) return; // stale instance
-      try {
-        const msg = parseMessage(event.data as string);
-        this.dispatch(msg);
-      } catch {
-        // Invalid message
-      }
-    };
+    this.doConnect(url);
   }
 
   disconnect(): void {
+    this.shouldReconnect = false;
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     if (this.ws) {
       this.ws.close();
       this.ws = null;
@@ -100,6 +86,50 @@ export class VPWebSocketClient {
     return () => {
       this.globalHandlers.delete(handler);
     };
+  }
+
+  private doConnect(url: string): void {
+    const ws = new WebSocket(url);
+    this.ws = ws;
+
+    ws.onopen = () => {
+      if (this.ws !== ws) return; // stale instance
+      this.setState('connected');
+    };
+
+    ws.onclose = () => {
+      if (this.ws !== ws) return; // stale instance
+      this.setState('disconnected');
+      this.ws = null;
+      this.scheduleReconnect();
+    };
+
+    ws.onerror = () => {
+      // onclose will fire after this
+    };
+
+    ws.onmessage = (event) => {
+      if (this.ws !== ws) return; // stale instance
+      try {
+        const msg = parseMessage(event.data as string);
+        this.dispatch(msg);
+      } catch {
+        // Invalid message
+      }
+    };
+  }
+
+  private scheduleReconnect(): void {
+    if (!this.shouldReconnect || !this.reconnectUrl) return;
+    if (this.reconnectTimer) return;
+
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (this.shouldReconnect && this.reconnectUrl) {
+        this.setState('connecting');
+        this.doConnect(this.reconnectUrl);
+      }
+    }, RECONNECT_DELAY_MS);
   }
 
   private dispatch(msg: VPMessage): void {

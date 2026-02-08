@@ -23,28 +23,40 @@ export function useTerminal({ sessionId }: UseTerminalOptions) {
   const createdRef = useRef(false);
   const connectionState = useConnectionStore((s) => s.state);
 
-  const sendTerminalCreate = useCallback(() => {
+  const sendTerminalCreateOrAttach = useCallback(() => {
     const terminal = terminalRef.current;
     if (!terminal || createdRef.current) return;
+
+    const tab = useTerminalStore.getState().tabs.find(t => t.sessionId === sessionId);
+    const needsAttach = tab?.needsAttach;
+
     try {
       const { cols, rows } = terminal;
-      transportManager.send(MessageType.TERMINAL_CREATE, {
-        sessionId,
-        cols,
-        rows,
-      });
+      if (needsAttach) {
+        transportManager.send(MessageType.TERMINAL_ATTACH, {
+          sessionId,
+          cols,
+          rows,
+        });
+      } else {
+        transportManager.send(MessageType.TERMINAL_CREATE, {
+          sessionId,
+          cols,
+          rows,
+        });
+      }
       createdRef.current = true;
     } catch {
       // Not connected yet
     }
   }, [sessionId]);
 
-  // When connection becomes 'connected', send terminal:create if not yet sent
+  // When connection becomes 'connected', send terminal:create or terminal:attach
   useEffect(() => {
     if (connectionState === 'connected' && terminalRef.current && !createdRef.current) {
-      sendTerminalCreate();
+      sendTerminalCreateOrAttach();
     }
-  }, [connectionState, sendTerminalCreate]);
+  }, [connectionState, sendTerminalCreateOrAttach]);
 
   const attach = useCallback((container: HTMLDivElement | null) => {
     if (!container) return;
@@ -94,6 +106,43 @@ export function useTerminal({ sessionId }: UseTerminalOptions) {
       }
     });
 
+    // Listen for terminal:attached — write buffered output and clear needsAttach
+    const unsubAttached = transportManager.on(MessageType.TERMINAL_ATTACHED, (msg: VPMessage) => {
+      const payload = msg.payload as any;
+      if (payload?.sessionId === sessionId) {
+        if (payload.bufferedOutput) {
+          terminal.write(payload.bufferedOutput);
+        }
+        useTerminalStore.getState().clearNeedsAttach(
+          useTerminalStore.getState().tabs.find(t => t.sessionId === sessionId)?.id ?? ''
+        );
+      }
+    });
+
+    // Listen for terminal:destroyed with exitCode=-1 (attach failed) — fallback to create
+    const unsubDestroyed = transportManager.on(MessageType.TERMINAL_DESTROYED, (msg: VPMessage) => {
+      const payload = msg.payload as any;
+      if (payload?.sessionId === sessionId && payload?.exitCode === -1) {
+        // Attach failed, clear needsAttach and send create
+        const tab = useTerminalStore.getState().tabs.find(t => t.sessionId === sessionId);
+        if (tab) {
+          useTerminalStore.getState().clearNeedsAttach(tab.id);
+        }
+        createdRef.current = false;
+        try {
+          const { cols, rows } = terminal;
+          transportManager.send(MessageType.TERMINAL_CREATE, {
+            sessionId,
+            cols,
+            rows,
+          });
+          createdRef.current = true;
+        } catch {
+          // Not connected
+        }
+      }
+    });
+
     // Listen for cwd changes from agent
     const unsubCwd = transportManager.on(MessageType.TERMINAL_CWD, (msg: VPMessage) => {
       if (msg.payload && (msg.payload as any).sessionId === sessionId) {
@@ -117,12 +166,14 @@ export function useTerminal({ sessionId }: UseTerminalOptions) {
     });
     resizeObserver.observe(container);
 
-    // Request terminal creation on agent (if already connected)
-    sendTerminalCreate();
+    // Request terminal creation or attach on agent (if already connected)
+    sendTerminalCreateOrAttach();
 
     cleanupRef.current = () => {
       inputDisposable.dispose();
       unsubOutput();
+      unsubAttached();
+      unsubDestroyed();
       unsubCwd();
       resizeObserver.disconnect();
       terminal.dispose();
@@ -130,7 +181,7 @@ export function useTerminal({ sessionId }: UseTerminalOptions) {
       fitAddonRef.current = null;
       createdRef.current = false;
     };
-  }, [sessionId, sendTerminalCreate]);
+  }, [sessionId, sendTerminalCreateOrAttach]);
 
   // Cleanup on unmount
   useEffect(() => {

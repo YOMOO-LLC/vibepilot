@@ -1,0 +1,48 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.js
+
+# Build outputs
+dist
+.next
+.turbo
+out
+
+# Testing
+coverage
+*.test.ts
+*.test.tsx
+__tests__
+*.spec.ts
+*.spec.tsx
+
+# Development
+.git
+.github
+.husky
+.vscode
+*.log
+*.lock
+
+# Environment files (use docker-compose environment instead)
+.env
+.env.local
+.env.*.local
+
+# Documentation
+*.md
+!README.md
+docs
+
+# Misc
+.DS_Store
+*.swp
+*.swo
+*~
+.idea
+
+# CI/CD
+.gitlab-ci.yml
+.travis.yml
+azure-pipelines.yml

@@ -139,4 +139,27 @@ describe('terminalStore', () => {
     store.prevTab(); // Wraps to last
     expect(useTerminalStore.getState().activeTabId).toBe(tabs[2].id);
   });
+
+  // New tests for needsAttach
+
+  it('clearNeedsAttach removes needsAttach flag', () => {
+    useTerminalStore.setState({
+      tabs: [
+        { id: 'tab-1', title: 'Terminal 1', sessionId: 'tab-1', needsAttach: true },
+        { id: 'tab-2', title: 'Terminal 2', sessionId: 'tab-2', needsAttach: true },
+      ],
+      activeTabId: 'tab-1',
+    });
+
+    useTerminalStore.getState().clearNeedsAttach('tab-1');
+    const state = useTerminalStore.getState();
+    expect(state.tabs[0].needsAttach).toBe(false);
+    expect(state.tabs[1].needsAttach).toBe(true);
+  });
+
+  it('newly created tabs do not have needsAttach', () => {
+    useTerminalStore.getState().createTab();
+    const state = useTerminalStore.getState();
+    expect(state.tabs[0].needsAttach).toBeUndefined();
+  });
 });

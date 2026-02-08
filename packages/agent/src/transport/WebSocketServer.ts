@@ -8,6 +8,7 @@ import {
   type TerminalInputPayload,
   type TerminalResizePayload,
   type TerminalDestroyPayload,
+  type TerminalAttachPayload,
   type FileTreeListPayload,
   type ProjectSwitchPayload,
   type TerminalCwdPayload,
@@ -18,6 +19,7 @@ import {
   type ImageCompletePayload,
 } from '@vibepilot/protocol';
 import { PtyManager } from '../pty/PtyManager.js';
+import { SessionPersistenceManager } from '../pty/SessionPersistenceManager.js';
 import { FileTreeService } from '../fs/FileTreeService.js';
 import { FileWatcher } from '../fs/FileWatcher.js';
 import { SignalingHandler } from './SignalingHandler.js';
@@ -29,6 +31,7 @@ import { ImageReceiver } from '../image/ImageReceiver.js';
 export interface VPWebSocketServerOptions {
   port: number;
   cwd?: string;
+  sessionTimeoutMs?: number;
 }
 
 interface ClientState {
@@ -38,13 +41,20 @@ interface ClientState {
   webrtcPeer?: WebRTCPeer;
 }
 
+interface SessionOwner {
+  ws: WebSocket;
+  state: ClientState;
+}
+
 export class VPWebSocketServer {
   private wss: WebSocketServer | null = null;
   private ptyManager = new PtyManager();
+  private sessionPersistence: SessionPersistenceManager;
   private fileTreeService: FileTreeService;
   private fileWatcher: FileWatcher;
   private clients = new Map<WebSocket, ClientState>();
   private cwdTrackers = new Map<string, { timer: ReturnType<typeof setInterval>; lastCwd: string }>();
+  private sessionOwners = new Map<string, SessionOwner>();
   private port: number;
   private cwd: string;
   private projectManager: ProjectManager;
@@ -58,6 +68,9 @@ export class VPWebSocketServer {
     this.fileTreeService = new FileTreeService(this.cwd);
     this.fileWatcher = new FileWatcher(this.cwd);
     this.projectManager = new ProjectManager();
+    this.sessionPersistence = new SessionPersistenceManager(this.ptyManager, {
+      timeoutMs: options.sessionTimeoutMs,
+    });
   }
 
   async start(): Promise<void> {
@@ -84,6 +97,7 @@ export class VPWebSocketServer {
   }
 
   async stop(): Promise<void> {
+    this.sessionPersistence.destroyAll();
     this.ptyManager.destroyAll();
     await this.fileWatcher.stop();
 
@@ -142,6 +156,9 @@ export class VPWebSocketServer {
     switch (msg.type) {
       case MessageType.TERMINAL_CREATE:
         this.handleTerminalCreate(ws, state, msg.payload as TerminalCreatePayload);
+        break;
+      case MessageType.TERMINAL_ATTACH:
+        this.handleTerminalAttach(ws, state, msg.payload as TerminalAttachPayload);
         break;
       case MessageType.TERMINAL_INPUT:
         this.handleTerminalInput(msg.payload as TerminalInputPayload);
@@ -217,31 +234,42 @@ export class VPWebSocketServer {
     });
 
     state.sessionIds.add(sessionId);
+    this.sessionOwners.set(sessionId, { ws, state });
 
     // Start tracking cwd changes for this session
-    this.startCwdTracking(ws, sessionId, effectiveCwd);
+    this.startCwdTracking(sessionId, effectiveCwd);
 
-    // Forward PTY output to client
+    // Forward PTY output to client via delegate
     this.ptyManager.onOutput(sessionId, (data) => {
-      if (ws.readyState === WebSocket.OPEN) {
+      const owner = this.sessionOwners.get(sessionId);
+      if (owner && owner.ws.readyState === WebSocket.OPEN) {
         const outputMsg = createMessage(MessageType.TERMINAL_OUTPUT, {
           sessionId,
           data,
         });
-        ws.send(JSON.stringify(outputMsg));
+        owner.ws.send(JSON.stringify(outputMsg));
       }
     });
 
     // Handle PTY exit
     this.ptyManager.onExit(sessionId, (exitCode) => {
-      if (ws.readyState === WebSocket.OPEN) {
+      // Check if orphaned
+      if (this.sessionPersistence.isOrphaned(sessionId)) {
+        this.sessionPersistence.handleOrphanedExit(sessionId);
+        this.sessionOwners.delete(sessionId);
+        return;
+      }
+
+      const owner = this.sessionOwners.get(sessionId);
+      if (owner && owner.ws.readyState === WebSocket.OPEN) {
         const destroyedMsg = createMessage(MessageType.TERMINAL_DESTROYED, {
           sessionId,
           exitCode,
         });
-        ws.send(JSON.stringify(destroyedMsg));
+        owner.ws.send(JSON.stringify(destroyedMsg));
       }
-      state.sessionIds.delete(sessionId);
+      owner?.state.sessionIds.delete(sessionId);
+      this.sessionOwners.delete(sessionId);
     });
 
     // Send created response
@@ -252,27 +280,106 @@ export class VPWebSocketServer {
     ws.send(JSON.stringify(response));
   }
 
-  private startCwdTracking(ws: WebSocket, sessionId: string, initialCwd: string): void {
-    // Send initial cwd immediately
-    const cwdMsg = createMessage(MessageType.TERMINAL_CWD, { sessionId, cwd: initialCwd } as TerminalCwdPayload);
-    if (ws.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify(cwdMsg));
+  private handleTerminalAttach(
+    ws: WebSocket,
+    state: ClientState,
+    payload: TerminalAttachPayload
+  ): void {
+    const { sessionId, cols, rows } = payload;
+
+    // Try to reclaim the orphaned session
+    const orphan = this.sessionPersistence.reclaim(sessionId);
+
+    if (!orphan || !this.ptyManager.hasSession(sessionId)) {
+      // Session doesn't exist — tell client to create a new one
+      const response = createMessage(MessageType.TERMINAL_DESTROYED, {
+        sessionId,
+        exitCode: -1,
+      });
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(response));
+      }
+      return;
     }
+
+    // Update owner mapping
+    state.sessionIds.add(sessionId);
+    this.sessionOwners.set(sessionId, { ws, state });
+
+    // Resize if dimensions provided
+    if (cols && rows) {
+      try {
+        this.ptyManager.resize(sessionId, cols, rows);
+      } catch {
+        // Ignore resize errors
+      }
+    }
+
+    // Attach new output sink and get buffered data
+    const bufferedOutput = this.ptyManager.attachOutput(sessionId, (data) => {
+      const owner = this.sessionOwners.get(sessionId);
+      if (owner && owner.ws.readyState === WebSocket.OPEN) {
+        const outputMsg = createMessage(MessageType.TERMINAL_OUTPUT, {
+          sessionId,
+          data,
+        });
+        owner.ws.send(JSON.stringify(outputMsg));
+      }
+    });
+
+    // Resume CWD tracking
+    this.resumeCwdTracking(sessionId, orphan.lastCwd);
+
+    // Send attached response with buffered output
+    const pid = this.ptyManager.getPid(sessionId)!;
+    const response = createMessage(MessageType.TERMINAL_ATTACHED, {
+      sessionId,
+      pid,
+      bufferedOutput,
+    });
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(response));
+    }
+  }
+
+  private startCwdTracking(sessionId: string, initialCwd: string): void {
+    const sendCwd = (cwd: string) => {
+      const owner = this.sessionOwners.get(sessionId);
+      if (owner && owner.ws.readyState === WebSocket.OPEN) {
+        const msg = createMessage(MessageType.TERMINAL_CWD, { sessionId, cwd } as TerminalCwdPayload);
+        owner.ws.send(JSON.stringify(msg));
+      }
+    };
+
+    // Send initial cwd immediately
+    sendCwd(initialCwd);
 
     const tracker = {
       timer: setInterval(async () => {
         const cwd = await this.ptyManager.getCwd(sessionId);
         if (cwd && cwd !== tracker.lastCwd) {
           tracker.lastCwd = cwd;
-          const msg = createMessage(MessageType.TERMINAL_CWD, { sessionId, cwd } as TerminalCwdPayload);
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify(msg));
-          }
+          sendCwd(cwd);
         }
       }, 2000),
       lastCwd: initialCwd,
     };
     this.cwdTrackers.set(sessionId, tracker);
+  }
+
+  private pauseCwdTracking(sessionId: string): string {
+    const tracker = this.cwdTrackers.get(sessionId);
+    if (tracker) {
+      clearInterval(tracker.timer);
+      const lastCwd = tracker.lastCwd;
+      this.cwdTrackers.delete(sessionId);
+      return lastCwd;
+    }
+    return this.cwd;
+  }
+
+  private resumeCwdTracking(sessionId: string, lastCwd: string): void {
+    this.startCwdTracking(sessionId, lastCwd);
   }
 
   private stopCwdTracking(sessionId: string): void {
@@ -309,12 +416,22 @@ export class VPWebSocketServer {
     this.stopCwdTracking(sessionId);
     this.ptyManager.destroy(sessionId);
     state.sessionIds.delete(sessionId);
+    this.sessionOwners.delete(sessionId);
   }
 
   private handleDisconnect(state: ClientState): void {
     for (const sessionId of state.sessionIds) {
-      this.stopCwdTracking(sessionId);
-      this.ptyManager.destroy(sessionId);
+      if (this.ptyManager.hasSession(sessionId) && !this.ptyManager.isExited(sessionId)) {
+        // Orphan the session instead of destroying
+        const lastCwd = this.pauseCwdTracking(sessionId);
+        this.ptyManager.detachOutput(sessionId);
+        this.sessionPersistence.orphan(sessionId, lastCwd);
+      } else {
+        // Session already exited or doesn't exist, clean up
+        this.stopCwdTracking(sessionId);
+        this.ptyManager.destroy(sessionId);
+        this.sessionOwners.delete(sessionId);
+      }
     }
     state.sessionIds.clear();
 

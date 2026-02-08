@@ -10,6 +10,8 @@ export const MessageType = {
   TERMINAL_DESTROY: 'terminal:destroy',
   TERMINAL_DESTROYED: 'terminal:destroyed',
   TERMINAL_CWD: 'terminal:cwd',
+  TERMINAL_ATTACH: 'terminal:attach',
+  TERMINAL_ATTACHED: 'terminal:attached',
 
   // File tree
   FILETREE_LIST: 'filetree:list',

@@ -133,6 +133,8 @@ describe('MessageType constants', () => {
     expect(MessageType.TERMINAL_RESIZE).toBe('terminal:resize');
     expect(MessageType.TERMINAL_DESTROY).toBe('terminal:destroy');
     expect(MessageType.TERMINAL_DESTROYED).toBe('terminal:destroyed');
+    expect(MessageType.TERMINAL_ATTACH).toBe('terminal:attach');
+    expect(MessageType.TERMINAL_ATTACHED).toBe('terminal:attached');
   });
 
   it('has all filetree types', () => {
@@ -167,6 +169,47 @@ describe('MessageType constants', () => {
     expect(MessageType.FILE_WRITE).toBe('file:write');
     expect(MessageType.FILE_WRITTEN).toBe('file:written');
     expect(MessageType.FILE_ERROR).toBe('file:error');
+  });
+});
+
+describe('terminal attach messages', () => {
+  it('creates terminal:attach message', () => {
+    const msg = createMessage(MessageType.TERMINAL_ATTACH, {
+      sessionId: 'sess-1',
+      cols: 80,
+      rows: 24,
+    });
+
+    expect(msg.type).toBe('terminal:attach');
+    expect(msg.payload.sessionId).toBe('sess-1');
+    expect(msg.payload.cols).toBe(80);
+    expect(msg.payload.rows).toBe(24);
+  });
+
+  it('creates terminal:attached message', () => {
+    const msg = createMessage(MessageType.TERMINAL_ATTACHED, {
+      sessionId: 'sess-1',
+      pid: 12345,
+      bufferedOutput: 'hello world',
+    });
+
+    expect(msg.type).toBe('terminal:attached');
+    expect(msg.payload.sessionId).toBe('sess-1');
+    expect(msg.payload.pid).toBe(12345);
+    expect(msg.payload.bufferedOutput).toBe('hello world');
+  });
+
+  it('round-trips terminal:attached message', () => {
+    const original = createMessage(MessageType.TERMINAL_ATTACHED, {
+      sessionId: 'sess-1',
+      pid: 12345,
+      bufferedOutput: 'buffered data',
+    });
+    const serialized = JSON.stringify(original);
+    const parsed = parseMessage(serialized);
+
+    expect(parsed.type).toBe(original.type);
+    expect(parsed.payload).toEqual(original.payload);
   });
 });
 

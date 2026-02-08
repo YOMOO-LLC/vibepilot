@@ -185,4 +185,70 @@ describe('VPWebSocketServer', () => {
     clients.push(ws2);
     expect(ws2.readyState).toBe(WebSocket.OPEN);
   });
+
+  it('preserves session on disconnect and allows reattach', async () => {
+    server = new VPWebSocketServer({ port: testPort, sessionTimeoutMs: 60000 });
+    await server.start();
+
+    // Create first client and terminal
+    const ws1 = await connectClient(testPort);
+    const createdPromise = waitForMessage(ws1, MessageType.TERMINAL_CREATED);
+    ws1.send(JSON.stringify(createMessage(MessageType.TERMINAL_CREATE, {
+      sessionId: 'sess-persist',
+      cols: 80,
+      rows: 24,
+    })));
+    const created = await createdPromise;
+    const originalPid = created.payload.pid;
+
+    // Send some input to generate output that will be buffered
+    ws1.send(JSON.stringify(createMessage(MessageType.TERMINAL_INPUT, {
+      sessionId: 'sess-persist',
+      data: 'hello\r',
+    })));
+    // Wait for output to be produced
+    await waitForMessage(ws1, MessageType.TERMINAL_OUTPUT);
+
+    // Disconnect first client
+    ws1.close();
+    await new Promise(r => setTimeout(r, 100));
+
+    // Connect new client and attach
+    const ws2 = await connectClient(testPort);
+    clients.push(ws2);
+
+    const attachedPromise = waitForMessage(ws2, MessageType.TERMINAL_ATTACHED);
+    ws2.send(JSON.stringify(createMessage(MessageType.TERMINAL_ATTACH, {
+      sessionId: 'sess-persist',
+      cols: 80,
+      rows: 24,
+    })));
+
+    const attached = await attachedPromise;
+    expect(attached.type).toBe(MessageType.TERMINAL_ATTACHED);
+    expect(attached.payload.sessionId).toBe('sess-persist');
+    expect(attached.payload.pid).toBe(originalPid);
+    // bufferedOutput should be a string (may or may not have content depending on timing)
+    expect(typeof attached.payload.bufferedOutput).toBe('string');
+  });
+
+  it('returns TERMINAL_DESTROYED for attach to non-existent session', async () => {
+    server = new VPWebSocketServer({ port: testPort });
+    await server.start();
+
+    const ws = await connectClient(testPort);
+    clients.push(ws);
+
+    const responsePromise = waitForMessage(ws, MessageType.TERMINAL_DESTROYED);
+    ws.send(JSON.stringify(createMessage(MessageType.TERMINAL_ATTACH, {
+      sessionId: 'no-such-session',
+      cols: 80,
+      rows: 24,
+    })));
+
+    const response = await responsePromise;
+    expect(response.type).toBe(MessageType.TERMINAL_DESTROYED);
+    expect(response.payload.sessionId).toBe('no-such-session');
+    expect(response.payload.exitCode).toBe(-1);
+  });
 });

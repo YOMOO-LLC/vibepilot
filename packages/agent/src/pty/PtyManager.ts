@@ -1,6 +1,7 @@
 import * as pty from 'node-pty';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import { OutputDelegate, type OutputSink } from './OutputDelegate.js';
 
 const execAsync = promisify(exec);
 
@@ -14,6 +15,9 @@ export interface PtyCreateOptions {
 interface PtySession {
   process: pty.IPty;
   pid: number;
+  outputDelegate: OutputDelegate;
+  exited: boolean;
+  exitCode?: number;
 }
 
 export class PtyManager {
@@ -38,9 +42,16 @@ export class PtyManager {
       env: process.env as Record<string, string>,
     });
 
+    const outputDelegate = new OutputDelegate();
+
+    // Register the ONE permanent onData listener
+    proc.onData(outputDelegate.handler);
+
     this.sessions.set(sessionId, {
       process: proc,
       pid: proc.pid,
+      outputDelegate,
+      exited: false,
     });
 
     return { pid: proc.pid };
@@ -56,12 +67,13 @@ export class PtyManager {
     session.process.resize(cols, rows);
   }
 
+  /** Legacy: attach output callback via delegate */
   onOutput(
     sessionId: string,
     callback: (data: string) => void
   ): void {
     const session = this.getSession(sessionId);
-    session.process.onData(callback);
+    session.outputDelegate.attach(callback);
   }
 
   onExit(
@@ -70,8 +82,37 @@ export class PtyManager {
   ): void {
     const session = this.getSession(sessionId);
     session.process.onExit(({ exitCode }) => {
+      session.exited = true;
+      session.exitCode = exitCode;
       callback(exitCode);
     });
+  }
+
+  /** Detach the output sink (output will be buffered) */
+  detachOutput(sessionId: string): void {
+    const session = this.sessions.get(sessionId);
+    if (!session) return;
+    session.outputDelegate.detach();
+  }
+
+  /** Attach a new output sink, returns any buffered output */
+  attachOutput(sessionId: string, callback: OutputSink): string {
+    const session = this.getSession(sessionId);
+    return session.outputDelegate.attach(callback);
+  }
+
+  hasSession(sessionId: string): boolean {
+    return this.sessions.has(sessionId);
+  }
+
+  isExited(sessionId: string): boolean {
+    const session = this.sessions.get(sessionId);
+    return session ? session.exited : true;
+  }
+
+  getPid(sessionId: string): number | null {
+    const session = this.sessions.get(sessionId);
+    return session ? session.pid : null;
   }
 
   destroy(sessionId: string): void {

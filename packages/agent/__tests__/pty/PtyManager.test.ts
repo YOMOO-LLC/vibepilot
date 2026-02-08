@@ -117,4 +117,70 @@ describe('PtyManager', () => {
     manager.destroy('sess-1');
     expect(exitFn).toHaveBeenCalledWith(0);
   });
+
+  // New tests for OutputDelegate integration
+
+  it('hasSession returns true for existing sessions', () => {
+    manager = new PtyManager();
+    manager.create('sess-1');
+    expect(manager.hasSession('sess-1')).toBe(true);
+    expect(manager.hasSession('no-such')).toBe(false);
+  });
+
+  it('getPid returns pid for existing sessions', () => {
+    manager = new PtyManager();
+    const { pid } = manager.create('sess-1');
+    expect(manager.getPid('sess-1')).toBe(pid);
+    expect(manager.getPid('no-such')).toBeNull();
+  });
+
+  it('isExited returns false for live sessions', () => {
+    manager = new PtyManager();
+    manager.create('sess-1');
+    expect(manager.isExited('sess-1')).toBe(false);
+    expect(manager.isExited('no-such')).toBe(true);
+  });
+
+  it('isExited returns true after exit callback fires', () => {
+    manager = new PtyManager();
+    manager.create('sess-1');
+    manager.onExit('sess-1', () => {});
+    manager.destroy('sess-1');
+    // After destroy, session is deleted, so isExited returns true (no session)
+    expect(manager.isExited('sess-1')).toBe(true);
+  });
+
+  it('detachOutput switches to buffering mode', async () => {
+    manager = new PtyManager();
+    manager.create('sess-1');
+
+    const sink = vi.fn();
+    manager.onOutput('sess-1', sink);
+
+    // Write data — goes to sink
+    await new Promise<void>((resolve) => {
+      sink.mockImplementationOnce(() => resolve());
+      manager.write('sess-1', 'first');
+    });
+    expect(sink).toHaveBeenCalledWith('first');
+
+    // Detach — now data should be buffered
+    manager.detachOutput('sess-1');
+    sink.mockClear();
+
+    // Write more data — goes to buffer
+    manager.write('sess-1', 'second');
+    await new Promise(r => setTimeout(r, 20));
+    expect(sink).not.toHaveBeenCalled();
+
+    // Attach new sink — should get buffered data
+    const sink2 = vi.fn();
+    const buffered = manager.attachOutput('sess-1', sink2);
+    expect(buffered).toBe('second');
+  });
+
+  it('detachOutput is safe for non-existent session', () => {
+    manager = new PtyManager();
+    expect(() => manager.detachOutput('no-such')).not.toThrow();
+  });
 });

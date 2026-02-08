@@ -2,6 +2,14 @@
   "name": "@vibepilot/web",
   "version": "0.1.0",
   "private": true,
+  "description": "VibePilot web frontend with terminal, file browser, and Monaco editor",
+  "license": "SEE LICENSE IN ../../LICENSE",
+  "author": "Your Name",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/YOUR_USERNAME/vibepilot.git",
+    "directory": "apps/web"
+  },
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "next build",

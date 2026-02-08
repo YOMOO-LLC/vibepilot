@@ -2,6 +2,7 @@
 import { Command } from 'commander';
 import { VPWebSocketServer } from '../src/transport/WebSocketServer.js';
 import { DEFAULT_PORT } from '@vibepilot/protocol';
+import { logger } from '../src/utils/logger.js';
 
 const program = new Command();
 
@@ -15,19 +16,27 @@ program
   .description('Start the VibePilot agent server')
   .option('-p, --port <number>', 'WebSocket server port', String(DEFAULT_PORT))
   .option('-d, --dir <path>', 'Working directory', process.cwd())
+  .option('-t, --session-timeout <seconds>', 'PTY session timeout after disconnect (seconds)', '300')
   .action(async (opts) => {
     const port = parseInt(opts.port, 10);
     const cwd = opts.dir;
+    const sessionTimeoutMs = parseInt(opts.sessionTimeout, 10) * 1000;
 
-    const server = new VPWebSocketServer({ port, cwd });
+    const server = new VPWebSocketServer({ port, cwd, sessionTimeoutMs });
     await server.start();
 
-    console.log(`VibePilot Agent listening on ws://localhost:${port}`);
-    console.log(`Working directory: ${cwd}`);
+    logger.info(
+      {
+        port,
+        cwd,
+        sessionTimeout: `${sessionTimeoutMs / 1000}s`,
+      },
+      'VibePilot Agent started',
+    );
 
     // Graceful shutdown
     const shutdown = async () => {
-      console.log('\nShutting down...');
+      logger.info('Shutting down gracefully...');
       await server.stop();
       process.exit(0);
     };
@@ -40,7 +49,7 @@ program
   .command('init')
   .description('Initialize VibePilot in the current project')
   .action(() => {
-    console.log('VibePilot initialized in', process.cwd());
+    logger.info({ cwd: process.cwd() }, 'VibePilot initialized');
   });
 
 export { program };

@@ -6,6 +6,44 @@ export interface TerminalTab {
   id: string;
   title: string;
   sessionId: string;
+  needsAttach?: boolean;
+}
+
+interface PersistedState {
+  tabs: TerminalTab[];
+  activeTabId: string | null;
+  counter: number;
+}
+
+function saveToSessionStorage(state: PersistedState): void {
+  try {
+    sessionStorage.setItem('vp-terminal-sessions', JSON.stringify({
+      tabs: state.tabs,
+      activeTabId: state.activeTabId,
+      counter: state.counter,
+    }));
+  } catch {
+    // sessionStorage not available, silently ignore
+  }
+}
+
+function loadFromSessionStorage(): PersistedState | null {
+  try {
+    const raw = sessionStorage.getItem('vp-terminal-sessions');
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed.tabs)) return null;
+    return {
+      tabs: parsed.tabs.map((t: any) => ({
+        ...t,
+        needsAttach: true,
+      })),
+      activeTabId: parsed.activeTabId ?? null,
+      counter: parsed.counter ?? 0,
+    };
+  } catch {
+    return null;
+  }
 }
 
 interface TerminalStore {
@@ -21,15 +59,19 @@ interface TerminalStore {
   setLayout: (layout: LayoutMode) => void;
   renameTab: (id: string, title: string) => void;
   setCwd: (sessionId: string, cwd: string) => void;
+  clearNeedsAttach: (id: string) => void;
   nextTab: () => void;
   prevTab: () => void;
 }
 
+// Load persisted state
+const persisted = typeof window !== 'undefined' ? loadFromSessionStorage() : null;
+
 export const useTerminalStore = create<TerminalStore>((set, get) => ({
-  tabs: [],
-  activeTabId: null,
+  tabs: persisted?.tabs ?? [],
+  activeTabId: persisted?.activeTabId ?? null,
   layout: 'single',
-  counter: 0,
+  counter: persisted?.counter ?? 0,
   cwdMap: {},
 
   createTab: (title?: string) => {
@@ -95,6 +137,14 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
     }));
   },
 
+  clearNeedsAttach: (id: string) => {
+    set((state) => ({
+      tabs: state.tabs.map((t) =>
+        t.id === id ? { ...t, needsAttach: false } : t
+      ),
+    }));
+  },
+
   nextTab: () => {
     const { tabs, activeTabId } = get();
     if (tabs.length <= 1) return;
@@ -111,3 +161,14 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
     set({ activeTabId: tabs[prevIdx].id });
   },
 }));
+
+// Subscribe to state changes and persist
+if (typeof window !== 'undefined') {
+  useTerminalStore.subscribe((state) => {
+    saveToSessionStorage({
+      tabs: state.tabs,
+      activeTabId: state.activeTabId,
+      counter: state.counter,
+    });
+  });
+}

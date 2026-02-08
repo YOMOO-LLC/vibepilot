@@ -1,5 +1,6 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { MessageType } from '@vibepilot/protocol';
+import { logger } from './utils/logger.js';
 
 export interface SignalingServerOptions {
   port: number;
@@ -28,10 +29,12 @@ export class SignalingServer {
   async start(): Promise<void> {
     return new Promise((resolve) => {
       this.wss = new WebSocketServer({ port: this.port }, () => {
+        logger.info({ port: this.port }, 'Signaling server started');
         resolve();
       });
 
       this.wss.on('connection', (ws) => {
+        logger.debug('New WebSocket connection');
         this.handleConnection(ws);
       });
     });
@@ -44,6 +47,8 @@ export class SignalingServer {
         return;
       }
 
+      logger.info('Stopping signaling server');
+
       for (const client of this.wss.clients) {
         client.close();
       }
@@ -52,6 +57,7 @@ export class SignalingServer {
         this.wss = null;
         this.rooms.clear();
         this.clientRoom.clear();
+        logger.info('Signaling server stopped');
         resolve();
       });
     });
@@ -108,6 +114,8 @@ export class SignalingServer {
     }
     this.rooms.get(roomId)!.add(ws);
     this.clientRoom.set(ws, roomId);
+
+    logger.debug({ roomId, roomSize: this.rooms.get(roomId)!.size }, 'Client joined room');
   }
 
   private leaveRoom(ws: WebSocket, roomId: string): void {
@@ -140,6 +148,7 @@ export class SignalingServer {
   private handleDisconnect(ws: WebSocket): void {
     const roomId = this.clientRoom.get(ws);
     if (roomId) {
+      logger.debug({ roomId }, 'Client disconnected from room');
       this.leaveRoom(ws, roomId);
     }
   }
@@ -150,7 +159,23 @@ const isMain = import.meta.url === `file://${process.argv[1]}`;
 if (isMain) {
   const port = parseInt(process.env.PORT || '9801', 10);
   const server = new SignalingServer({ port });
-  server.start().then(() => {
-    console.log(`Signaling server listening on port ${port}`);
-  });
+  server
+    .start()
+    .then(() => {
+      // Logger already logs this in start()
+    })
+    .catch((error) => {
+      logger.error({ error }, 'Failed to start signaling server');
+      process.exit(1);
+    });
+
+  // Graceful shutdown
+  const shutdown = async () => {
+    logger.info('Shutting down gracefully...');
+    await server.stop();
+    process.exit(0);
+  };
+
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
 }

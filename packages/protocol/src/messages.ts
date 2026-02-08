@@ -54,6 +54,18 @@ export interface TerminalCwdPayload {
   cwd: string;
 }
 
+export interface TerminalAttachPayload {
+  sessionId: string;
+  cols?: number;
+  rows?: number;
+}
+
+export interface TerminalAttachedPayload {
+  sessionId: string;
+  pid: number;
+  bufferedOutput: string;
+}
+
 // --- File Tree Messages ---
 
 export interface FileTreeListPayload {
@@ -173,6 +185,8 @@ export interface MessagePayloadMap {
   [MessageType.TERMINAL_DESTROY]: TerminalDestroyPayload;
   [MessageType.TERMINAL_DESTROYED]: TerminalDestroyedPayload;
   [MessageType.TERMINAL_CWD]: TerminalCwdPayload;
+  [MessageType.TERMINAL_ATTACH]: TerminalAttachPayload;
+  [MessageType.TERMINAL_ATTACHED]: TerminalAttachedPayload;
   [MessageType.FILETREE_LIST]: FileTreeListPayload;
   [MessageType.FILETREE_DATA]: FileTreeDataPayload;
   [MessageType.FILETREE_CHANGED]: FileTreeChangedPayload;
