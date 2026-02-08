@@ -11,9 +11,10 @@
     "directory": "apps/web"
   },
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev --turbopack --port 3456 & sleep 3 && open http://localhost:3456",
+    "dev:no-open": "next dev --turbopack --port 3456",
     "build": "next build",
-    "start": "next start",
+    "start": "next start --port 3456",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "lint": "next lint",
