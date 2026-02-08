@@ -6,6 +6,7 @@ import { ConnectionStatus } from '@/components/connection/ConnectionStatus';
 import { DevicePicker } from '@/components/connection/DevicePicker';
 import { ProjectSwitcher } from '@/components/connection/ProjectSwitcher';
 import { TokenLoginScreen } from '@/components/connection/TokenLoginScreen';
+import { SupabaseLoginScreen } from '@/components/connection/SupabaseLoginScreen';
 import { AgentSelectorScreen } from '@/components/connection/AgentSelectorScreen';
 import { AppShell } from '@/components/layout/AppShell';
 import { Sidebar } from '@/components/layout/Sidebar';
@@ -44,7 +45,12 @@ export default function HomeContent() {
     loadProjects,
   } = useProjectStore();
   const { setRoot } = useFileTreeStore();
-  const { isAuthenticated, restoreSession } = useAuthStore();
+  const {
+    isAuthenticated,
+    loading: authLoading,
+    restoreSession,
+    initSupabaseListener,
+  } = useAuthStore();
   const {
     agents,
     selectedAgent,
@@ -58,12 +64,15 @@ export default function HomeContent() {
   const needsAuth = AUTH_MODE !== 'none';
   const isAuthed = !needsAuth || isAuthenticated;
 
-  // Step 1: Restore session on mount
+  // Step 1: Restore session on mount + init Supabase listener
   useEffect(() => {
     if (needsAuth) {
+      if (AUTH_MODE === 'supabase') {
+        initSupabaseListener();
+      }
       restoreSession();
     }
-  }, [needsAuth, restoreSession]);
+  }, [needsAuth, restoreSession, initSupabaseListener]);
 
   // Step 2: Once authenticated, load agents
   useEffect(() => {
@@ -119,7 +128,14 @@ export default function HomeContent() {
 
   // Gate 1: Login screen (only in auth mode)
   if (needsAuth && !isAuthenticated) {
-    return <TokenLoginScreen />;
+    if (authLoading) {
+      return (
+        <div className="fixed inset-0 z-50 bg-zinc-950 flex items-center justify-center">
+          <p className="text-zinc-400">Loading...</p>
+        </div>
+      );
+    }
+    return AUTH_MODE === 'supabase' ? <SupabaseLoginScreen /> : <TokenLoginScreen />;
   }
 
   // Gate 2: Agent selector (only in auth mode, when no agent selected)

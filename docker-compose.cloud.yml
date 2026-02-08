@@ -1,0 +1,58 @@
+# VibePilot Cloud Mode - Docker Compose
+#
+# This configuration adds Supabase authentication and TLS termination
+# on top of the base docker-compose.yml.
+#
+# Usage:
+#   1. Copy .env.example to .env and fill in your Supabase credentials
+#   2. docker compose -f docker-compose.yml -f docker-compose.cloud.yml up -d
+#
+# Required environment variables in .env:
+#   NEXT_PUBLIC_AUTH_MODE=supabase
+#   NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+#   NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+#   VP_SUPABASE_URL=https://your-project.supabase.co
+#   VP_SUPABASE_KEY=eyJ... (service_role key)
+#   VP_AGENT_NAME=My Server
+#   VP_PUBLIC_URL=wss://your-domain.com/ws
+#   DOMAIN=your-domain.com
+
+services:
+  # Override agent with Supabase auth config
+  agent:
+    environment:
+      - VP_SUPABASE_URL=${VP_SUPABASE_URL}
+      - VP_SUPABASE_KEY=${VP_SUPABASE_KEY}
+      - VP_AGENT_NAME=${VP_AGENT_NAME:-VibePilot Agent}
+      - VP_PUBLIC_URL=${VP_PUBLIC_URL}
+
+  # Override web with Supabase auth config
+  web:
+    environment:
+      - NEXT_PUBLIC_AUTH_MODE=supabase
+      - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+      - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+
+  # Caddy reverse proxy with automatic HTTPS
+  caddy:
+    image: caddy:2-alpine
+    container_name: vibepilot-caddy
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - agent
+    restart: unless-stopped
+    networks:
+      - vibepilot-network
+
+volumes:
+  caddy_data:
+    driver: local
+  caddy_config:
+    driver: local

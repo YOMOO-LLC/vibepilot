@@ -1,0 +1,16 @@
+{$DOMAIN:localhost} {
+	# WebSocket endpoint for agent
+	handle /ws {
+		reverse_proxy agent:9800
+	}
+
+	# Signaling server
+	handle /signal {
+		reverse_proxy signaling:9900
+	}
+
+	# Everything else goes to Next.js
+	handle {
+		reverse_proxy web:3000
+	}
+}

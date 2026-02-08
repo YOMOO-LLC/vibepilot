@@ -6,7 +6,9 @@ import { DEFAULT_PORT } from '@vibepilot/protocol';
 import { logger } from '../src/utils/logger.js';
 import { ProjectManager } from '../src/config/ProjectManager.js';
 import { TokenAuthProvider } from '../src/auth/TokenAuthProvider.js';
+import { SupabaseAuthProvider } from '../src/auth/SupabaseAuthProvider.js';
 import { FileSystemRegistry } from '../src/registry/FileSystemRegistry.js';
+import { SupabaseRegistry } from '../src/registry/SupabaseRegistry.js';
 import type { AuthProvider } from '../src/auth/AuthProvider.js';
 import type { AgentRegistry } from '../src/registry/AgentRegistry.js';
 
@@ -31,48 +33,79 @@ program
   .option('--agent-name <name>', 'Agent display name', os.hostname())
   .option('--public-url <url>', 'Agent public WebSocket URL')
   .option('--registry-path <path>', 'Path to agent registry file')
+  .option('--supabase-url <url>', 'Supabase project URL (enables Supabase auth mode)')
+  .option('--supabase-key <key>', 'Supabase service role key')
   .action(async (opts) => {
     const port = parseInt(opts.port, 10);
     const cwd = opts.dir;
     const sessionTimeoutMs = parseInt(opts.sessionTimeout, 10) * 1000;
 
+    // Determine auth mode: supabase > token > none
+    const supabaseUrl = opts.supabaseUrl || process.env.VP_SUPABASE_URL;
+    const supabaseKey = opts.supabaseKey || process.env.VP_SUPABASE_KEY;
+
     // Initialize auth provider
     let authProvider: AuthProvider | undefined;
-    const token = opts.token || process.env.VP_TOKEN;
-    if (token) {
-      authProvider = new TokenAuthProvider(token);
-      logger.info('Token authentication enabled');
+    if (supabaseUrl) {
+      authProvider = new SupabaseAuthProvider(supabaseUrl);
+      logger.info('Supabase authentication enabled');
+    } else {
+      const token = opts.token || process.env.VP_TOKEN;
+      if (token) {
+        authProvider = new TokenAuthProvider(token);
+        logger.info('Token authentication enabled');
+      }
     }
 
     // Initialize agent registry
     let registry: AgentRegistry | undefined;
-    const registryPath = opts.registryPath || process.env.VP_REGISTRY_PATH;
-    if (registryPath || opts.publicUrl || process.env.VP_PUBLIC_URL) {
-      const path = registryPath || `${os.homedir()}/.vibepilot/agents.json`;
-      registry = new FileSystemRegistry(path);
+    const publicUrl = opts.publicUrl || process.env.VP_PUBLIC_URL;
+    const agentName = opts.agentName || process.env.VP_AGENT_NAME || os.hostname();
 
-      const publicUrl = opts.publicUrl || process.env.VP_PUBLIC_URL || `ws://localhost:${port}`;
-      const agentName = opts.agentName || process.env.VP_AGENT_NAME || os.hostname();
+    if (supabaseUrl && supabaseKey) {
+      // Supabase registry mode
+      registry = new SupabaseRegistry(supabaseUrl, supabaseKey);
+      const effectivePublicUrl = publicUrl || `wss://localhost:${port}`;
 
       const agentInfo = await registry.register({
         name: agentName,
-        publicUrl,
-        ownerId: 'default',
+        publicUrl: effectivePublicUrl,
+        ownerId: 'supabase', // Will be replaced by actual user ID via RLS
         version: '0.1.0',
         platform: `${os.platform()}-${os.arch()}`,
       });
-      logger.info({ agentId: agentInfo.id, name: agentInfo.name }, 'Agent registered');
+      logger.info({ agentId: agentInfo.id, name: agentInfo.name }, 'Agent registered (Supabase)');
+    } else {
+      // File-system registry mode (single-user / token mode)
+      const registryPath = opts.registryPath || process.env.VP_REGISTRY_PATH;
+      if (registryPath || publicUrl) {
+        const path = registryPath || `${os.homedir()}/.vibepilot/agents.json`;
+        registry = new FileSystemRegistry(path);
+
+        const effectivePublicUrl = publicUrl || `ws://localhost:${port}`;
+
+        const agentInfo = await registry.register({
+          name: agentName,
+          publicUrl: effectivePublicUrl,
+          ownerId: 'default',
+          version: '0.1.0',
+          platform: `${os.platform()}-${os.arch()}`,
+        });
+        logger.info({ agentId: agentInfo.id, name: agentInfo.name }, 'Agent registered');
+      }
     }
 
     const server = new VPWebSocketServer({ port, cwd, sessionTimeoutMs, authProvider });
     await server.start();
 
+    const authMode = supabaseUrl ? 'supabase' : authProvider ? 'token' : 'none';
     logger.info(
       {
         port,
         cwd,
         sessionTimeout: `${sessionTimeoutMs / 1000}s`,
-        auth: authProvider ? 'token' : 'none',
+        auth: authMode,
+        registry: supabaseUrl ? 'supabase' : registry ? 'filesystem' : 'none',
       },
       'VibePilot Agent started'
     );
