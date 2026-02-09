@@ -5,6 +5,16 @@ import { OutputDelegate, type OutputSink } from './OutputDelegate.js';
 
 const execAsync = promisify(exec);
 
+const ALLOWED_SHELLS = new Set([
+  '/bin/bash',
+  '/bin/zsh',
+  '/bin/sh',
+  '/usr/bin/bash',
+  '/usr/bin/zsh',
+  '/usr/local/bin/bash',
+  '/usr/local/bin/zsh',
+]);
+
 export interface PtyCreateOptions {
   cols?: number;
   rows?: number;
@@ -23,16 +33,17 @@ interface PtySession {
 export class PtyManager {
   private sessions = new Map<string, PtySession>();
 
-  create(
-    sessionId: string,
-    options: PtyCreateOptions = {}
-  ): { pid: number } {
+  create(sessionId: string, options: PtyCreateOptions = {}): { pid: number } {
     const {
       cols = 80,
       rows = 24,
       cwd = process.cwd(),
       shell = process.env.SHELL || '/bin/bash',
     } = options;
+
+    if (!ALLOWED_SHELLS.has(shell)) {
+      throw new Error('Shell not allowed');
+    }
 
     const proc = pty.spawn(shell, [], {
       name: 'xterm-256color',
@@ -68,18 +79,12 @@ export class PtyManager {
   }
 
   /** Legacy: attach output callback via delegate */
-  onOutput(
-    sessionId: string,
-    callback: (data: string) => void
-  ): void {
+  onOutput(sessionId: string, callback: (data: string) => void): void {
     const session = this.getSession(sessionId);
     session.outputDelegate.attach(callback);
   }
 
-  onExit(
-    sessionId: string,
-    callback: (exitCode: number) => void
-  ): void {
+  onExit(sessionId: string, callback: (exitCode: number) => void): void {
     const session = this.getSession(sessionId);
     session.process.onExit(({ exitCode }) => {
       session.exited = true;

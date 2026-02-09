@@ -1,5 +1,5 @@
 import { timingSafeEqual } from 'crypto';
-import type { AuthProvider, AuthResult, UserInfo } from './AuthProvider';
+import type { AuthProvider, AuthResult, UserInfo } from './AuthProvider.js';
 
 /**
  * Simple token-based authentication for single-user mode.

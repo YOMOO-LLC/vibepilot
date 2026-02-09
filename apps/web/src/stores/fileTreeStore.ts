@@ -25,8 +25,6 @@ export const useFileTreeStore = create<FileTreeStore>((set, get) => {
   // Listen for filetree:changed — reload affected directory
   transportManager.on(MessageType.FILETREE_CHANGED, (msg: any) => {
     const { path: changedPath } = msg.payload;
-    // Find the parent directory of the changed file and reload it
-    const parentDir = changedPath.substring(0, changedPath.lastIndexOf('/')) || changedPath;
     const { childrenMap } = get();
     // Reload any loaded directory that could be affected
     for (const loadedPath of Object.keys(childrenMap)) {

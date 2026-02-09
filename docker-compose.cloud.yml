@@ -26,12 +26,14 @@ services:
       - VP_AGENT_NAME=${VP_AGENT_NAME:-VibePilot Agent}
       - VP_PUBLIC_URL=${VP_PUBLIC_URL}
 
-  # Override web with Supabase auth config
+  # Override web with Supabase auth config + relay JWT verification
   web:
     environment:
       - NEXT_PUBLIC_AUTH_MODE=supabase
       - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
       - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
+      - NEXT_PUBLIC_RELAY_URL=wss://${DOMAIN}/relay
+      - SUPABASE_URL=${VP_SUPABASE_URL}
 
   # Caddy reverse proxy with automatic HTTPS
   caddy:

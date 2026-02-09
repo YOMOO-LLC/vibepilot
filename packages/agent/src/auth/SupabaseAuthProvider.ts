@@ -52,7 +52,10 @@ export class SupabaseAuthProvider implements AuthProvider {
         return {};
       }
 
-      const data = await response.json();
+      const data = (await response.json()) as {
+        user_metadata?: { full_name?: string };
+        email?: string;
+      };
       return {
         name: data.user_metadata?.full_name || data.email?.split('@')[0],
         email: data.email,

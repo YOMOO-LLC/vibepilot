@@ -2,7 +2,7 @@
 
 > Browser-based development environment with persistent terminal sessions, real-time file editing, and optional cloud remote access.
 
-[![Tests](https://img.shields.io/badge/tests-414%20passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-427%20passing-brightgreen)]()
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)]()
 [![License](https://img.shields.io/badge/license-BSL%201.1-orange)]()
 [![Node.js](https://img.shields.io/badge/Node.js-20%2B-green)]()
@@ -254,7 +254,7 @@ vibepilot/
 │       │   ├── registry/        # AgentRegistry, FileSystemRegistry,
 │       │   │                    # SupabaseRegistry
 │       │   └── image/           # ImageReceiver
-│       └── __tests__/           # 205 tests
+│       └── __tests__/           # 207 tests
 │
 ├── apps/
 │   └── web/                     # @vibepilot/web — Next.js 15 frontend
@@ -385,12 +385,12 @@ Copy `.env.example` to `.env` (or `apps/web/.env.local` for the web app) and con
 VibePilot uses [Vitest](https://vitest.dev/) with strict TDD methodology.
 
 ```bash
-# Run all tests (414 tests across 44 files)
+# Run all tests (427 tests across 44 files)
 pnpm test
 
 # Run tests for a specific package
 pnpm --filter protocol test    # 25 tests
-pnpm --filter agent test       # 205 tests
+pnpm --filter agent test       # 207 tests
 pnpm --filter web test         # 176 tests
 
 # Run a single test file
@@ -481,7 +481,10 @@ pnpm --filter web start
 
 ## Security
 
-- **Path validation** — All file operations are validated to stay within the workspace root
+- **Path validation** — All file operations validated to stay within the workspace root (`FileContentService.validatePath()`)
+- **Shell whitelist** — PTY sessions restricted to known safe shells (`/bin/bash`, `/bin/zsh`, `/bin/sh`)
+- **Event debounce** — File watcher debounces rapid events (300ms) to prevent event storms
+- **Message size limit** — WebSocket `maxPayload` set to 10MB to prevent memory exhaustion
 - **Authentication** — Pluggable auth with timing-safe token comparison and JWKS JWT verification
 - **Row Level Security** — Supabase RLS ensures user isolation at the database level
 - **Transport encryption** — WebRTC uses DTLS/SRTP; WSS recommended for production

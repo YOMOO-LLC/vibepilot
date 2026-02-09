@@ -1,3 +1,3 @@
-export type { AgentInfo, AgentRegistration, AgentRegistry } from './AgentRegistry';
-export { FileSystemRegistry } from './FileSystemRegistry';
-export { SupabaseRegistry } from './SupabaseRegistry';
+export type { AgentInfo, AgentRegistration, AgentRegistry } from './AgentRegistry.js';
+export { FileSystemRegistry } from './FileSystemRegistry.js';
+export { SupabaseRegistry } from './SupabaseRegistry.js';

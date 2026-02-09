@@ -69,7 +69,7 @@ export class VPWebSocketServer {
   private port: number;
   private cwd: string;
   private projectManager: ProjectManager;
-  private fileContentService = new FileContentService();
+  private fileContentService: FileContentService;
   private imageReceiver = new ImageReceiver();
   private imageSessionMap = new Map<string, string>(); // transferId → sessionId
   private authProvider?: AuthProvider;
@@ -80,6 +80,7 @@ export class VPWebSocketServer {
     this.fileTreeService = new FileTreeService(this.cwd);
     this.fileWatcher = new FileWatcher(this.cwd);
     this.projectManager = new ProjectManager();
+    this.fileContentService = new FileContentService(this.cwd);
     this.authProvider = options.authProvider;
     this.sessionPersistence = new SessionPersistenceManager(this.ptyManager, {
       timeoutMs: options.sessionTimeoutMs,
@@ -96,7 +97,7 @@ export class VPWebSocketServer {
         res.end('WebSocket connection required');
       });
 
-      this.wss = new WebSocketServer({ noServer: true });
+      this.wss = new WebSocketServer({ noServer: true, maxPayload: 10 * 1024 * 1024 });
 
       this.wss.on('connection', (ws) => {
         this.handleConnection(ws);
@@ -519,9 +520,7 @@ export class VPWebSocketServer {
   private async handleFileTreeList(ws: WebSocket, payload: FileTreeListPayload): Promise<void> {
     try {
       const { path, depth = 1 } = payload;
-      // Use a FileTreeService rooted at the requested path to allow listing any directory
-      const service = new FileTreeService(path);
-      const entries = await service.list(path, depth);
+      const entries = await this.fileTreeService.list(path, depth);
 
       const response = createMessage(MessageType.FILETREE_DATA, {
         path,
@@ -544,8 +543,9 @@ export class VPWebSocketServer {
       // Update cwd
       this.cwd = project.path;
 
-      // Re-create FileTreeService for the new project path
+      // Re-create FileTreeService and FileContentService for the new project path
       this.fileTreeService = new FileTreeService(project.path);
+      this.fileContentService = new FileContentService(project.path);
 
       // Stop old file watcher and start a new one for the new project path
       await this.fileWatcher.stop();

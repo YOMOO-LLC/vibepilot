@@ -10,19 +10,23 @@ vi.mock('node-pty', () => {
 
     return {
       pid: Math.floor(Math.random() * 10000) + 1000,
-      onData: (cb: (data: string) => void) => { dataCallbacks.push(cb); },
-      onExit: (cb: (e: { exitCode: number }) => void) => { exitCallbacks.push(cb); },
+      onData: (cb: (data: string) => void) => {
+        dataCallbacks.push(cb);
+      },
+      onExit: (cb: (e: { exitCode: number }) => void) => {
+        exitCallbacks.push(cb);
+      },
       write: (data: string) => {
         if (killed) throw new Error('Process killed');
         // Simulate echo back
         setTimeout(() => {
-          dataCallbacks.forEach(cb => cb(data));
+          dataCallbacks.forEach((cb) => cb(data));
         }, 5);
       },
       resize: vi.fn(),
       kill: () => {
         killed = true;
-        exitCallbacks.forEach(cb => cb({ exitCode: 0 }));
+        exitCallbacks.forEach((cb) => cb({ exitCode: 0 }));
       },
       _dataCallbacks: dataCallbacks,
     };
@@ -107,6 +111,25 @@ describe('PtyManager', () => {
     expect(pid).toBeGreaterThan(0);
   });
 
+  it('rejects shell not in whitelist', () => {
+    manager = new PtyManager();
+    expect(() => manager.create('sess-1', { shell: '/usr/bin/python3' })).toThrow(
+      'Shell not allowed'
+    );
+  });
+
+  it('allows /bin/bash from whitelist', () => {
+    manager = new PtyManager();
+    const { pid } = manager.create('sess-1', { shell: '/bin/bash' });
+    expect(pid).toBeGreaterThan(0);
+  });
+
+  it('allows /bin/zsh from whitelist', () => {
+    manager = new PtyManager();
+    const { pid } = manager.create('sess-1', { shell: '/bin/zsh' });
+    expect(pid).toBeGreaterThan(0);
+  });
+
   it('registers exit callback', () => {
     manager = new PtyManager();
     manager.create('sess-1');
@@ -170,7 +193,7 @@ describe('PtyManager', () => {
 
     // Write more data — goes to buffer
     manager.write('sess-1', 'second');
-    await new Promise(r => setTimeout(r, 20));
+    await new Promise((r) => setTimeout(r, 20));
     expect(sink).not.toHaveBeenCalled();
 
     // Attach new sink — should get buffered data

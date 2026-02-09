@@ -2,7 +2,14 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 
 const IMAGE_EXTENSIONS = new Set([
-  '.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.ico', '.bmp',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.svg',
+  '.webp',
+  '.ico',
+  '.bmp',
 ]);
 
 const LANGUAGE_MAP: Record<string, string> = {
@@ -71,6 +78,19 @@ export interface FileReadResult {
 }
 
 export class FileContentService {
+  private rootPath: string;
+
+  constructor(rootPath: string) {
+    this.rootPath = path.resolve(rootPath);
+  }
+
+  private validatePath(filePath: string): void {
+    const resolved = path.resolve(filePath);
+    if (!resolved.startsWith(this.rootPath + path.sep) && resolved !== this.rootPath) {
+      throw new Error('Path outside workspace');
+    }
+  }
+
   static getLanguage(filePath: string): string {
     const ext = path.extname(filePath).toLowerCase();
     // Handle special filenames
@@ -91,6 +111,7 @@ export class FileContentService {
   }
 
   async read(filePath: string): Promise<FileReadResult> {
+    this.validatePath(filePath);
     const isImage = FileContentService.isImage(filePath);
     const stat = await fs.stat(filePath);
 
@@ -120,6 +141,7 @@ export class FileContentService {
   }
 
   async write(filePath: string, content: string): Promise<number> {
+    this.validatePath(filePath);
     await fs.writeFile(filePath, content, 'utf-8');
     const stat = await fs.stat(filePath);
     return stat.size;

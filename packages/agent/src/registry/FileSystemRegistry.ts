@@ -1,7 +1,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { randomUUID } from 'crypto';
-import type { AgentInfo, AgentRegistration, AgentRegistry } from './AgentRegistry';
+import type { AgentInfo, AgentRegistration, AgentRegistry } from './AgentRegistry.js';
 
 interface RegistryData {
   version: string;

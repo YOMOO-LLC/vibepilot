@@ -40,8 +40,8 @@ export class SupabaseRegistry implements AgentRegistry {
       throw new Error(`Failed to register agent: ${response.status} ${text}`);
     }
 
-    const [data] = await response.json();
-    return this.toAgentInfo(data);
+    const rows = (await response.json()) as any[];
+    return this.toAgentInfo(rows[0]);
   }
 
   async heartbeat(agentId: string): Promise<void> {
@@ -84,7 +84,7 @@ export class SupabaseRegistry implements AgentRegistry {
       throw new Error(`List agents failed: ${response.status} ${text}`);
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as any[];
     return data.map((row: any) => this.toAgentInfo(row));
   }
 
@@ -105,13 +105,13 @@ export class SupabaseRegistry implements AgentRegistry {
       return null;
     }
 
-    const data = await response.json();
+    const data = (await response.json()) as any;
     return this.toAgentInfo(data);
   }
 
   private async request(
     path: string,
-    init: RequestInit & { headers?: Record<string, string> }
+    init: { method: string; headers?: Record<string, string>; body?: string }
   ): Promise<Response> {
     const url = `${this.supabaseUrl}${path}`;
     const headers: Record<string, string> = {
@@ -122,8 +122,9 @@ export class SupabaseRegistry implements AgentRegistry {
     };
 
     return fetch(url, {
-      ...init,
+      method: init.method,
       headers,
+      body: init.body,
     });
   }
 

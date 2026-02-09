@@ -4,12 +4,7 @@
 		reverse_proxy agent:9800
 	}
 
-	# Signaling server
-	handle /signal {
-		reverse_proxy signaling:9900
-	}
-
-	# Everything else goes to Next.js
+	# Everything else (including /relay WebSocket) goes to Next.js
 	handle {
 		reverse_proxy web:3000
 	}

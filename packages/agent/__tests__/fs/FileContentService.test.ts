@@ -9,8 +9,8 @@ describe('FileContentService', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    service = new FileContentService();
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'fcs-test-'));
+    service = new FileContentService(tmpDir);
   });
 
   afterEach(async () => {
@@ -139,6 +139,44 @@ describe('FileContentService', () => {
 
       const written = await fs.readFile(filePath, 'utf-8');
       expect(written).toBe('new content');
+    });
+  });
+
+  describe('path validation', () => {
+    it('rejects reading files outside workspace', async () => {
+      const outsidePath = path.join(os.tmpdir(), 'outside-file.txt');
+      await fs.writeFile(outsidePath, 'secret', 'utf-8');
+
+      await expect(service.read(outsidePath)).rejects.toThrow('Path outside workspace');
+
+      await fs.unlink(outsidePath);
+    });
+
+    it('rejects writing files outside workspace', async () => {
+      const outsidePath = path.join(os.tmpdir(), 'outside-write.txt');
+      await expect(service.write(outsidePath, 'hack')).rejects.toThrow('Path outside workspace');
+    });
+
+    it('rejects path traversal with ../', async () => {
+      const traversalPath = path.join(tmpDir, '..', 'traversal.txt');
+      await expect(service.read(traversalPath)).rejects.toThrow('Path outside workspace');
+    });
+
+    it('rejects deeply nested path traversal', async () => {
+      const subDir = path.join(tmpDir, 'sub');
+      await fs.mkdir(subDir);
+      const traversalPath = path.join(subDir, '..', '..', 'escape.txt');
+      await expect(service.read(traversalPath)).rejects.toThrow('Path outside workspace');
+    });
+
+    it('allows reading files inside workspace subdirectories', async () => {
+      const subDir = path.join(tmpDir, 'subdir');
+      await fs.mkdir(subDir);
+      const filePath = path.join(subDir, 'nested.ts');
+      await fs.writeFile(filePath, 'nested content', 'utf-8');
+
+      const result = await service.read(filePath);
+      expect(result.content).toBe('nested content');
     });
   });
 });
