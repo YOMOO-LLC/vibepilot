@@ -3,6 +3,7 @@
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useEditorStore } from '@/stores/editorStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { useBrowserStore } from '@/stores/browserStore';
 import { getFileIconUrl } from '@/lib/fileIcons';
 
 export function TabBar() {
@@ -20,6 +21,8 @@ export function TabBar() {
 
   const activePane = useWorkspaceStore((s) => s.activePane);
   const setActivePane = useWorkspaceStore((s) => s.setActivePane);
+
+  const browserState = useBrowserStore((s) => s.state);
 
   const handleTerminalTabClick = (id: string) => {
     setTerminalActiveTab(id);
@@ -128,6 +131,22 @@ export function TabBar() {
           </button>
         </div>
       ))}
+
+      {/* Preview tab */}
+      {browserState !== 'idle' && (
+        <div
+          className={`flex items-center gap-1 px-3 h-full text-sm cursor-pointer border-r border-zinc-800 shrink-0 ${
+            activePane?.kind === 'preview'
+              ? 'bg-zinc-950 text-zinc-100'
+              : 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800'
+          }`}
+          onClick={() => setActivePane({ kind: 'preview' })}
+          data-testid="tab-preview"
+        >
+          <span className="text-xs">🌐</span>
+          <span>Preview</span>
+        </div>
+      )}
 
       {/* New terminal button */}
       <button

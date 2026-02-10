@@ -16,6 +16,7 @@ import { StatusBar } from '@/components/layout/StatusBar';
 import { FileTreePanel } from '@/components/filetree/FileTreePanel';
 import { TabBar } from '@/components/tabs/TabBar';
 import { EditorPanel } from '@/components/editor/EditorPanel';
+import { PreviewPanel } from '@/components/browser/PreviewPanel';
 import { ImageDropZone } from '@/components/image/ImageDropZone';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useTerminalStore } from '@/stores/terminalStore';
@@ -163,6 +164,7 @@ export default function HomeContent() {
 
   const isTerminalActive = activePane?.kind === 'terminal' || activePane === null;
   const isEditorActive = activePane?.kind === 'editor';
+  const isPreviewActive = activePane?.kind === 'preview';
 
   return (
     <ImageDropZone>
@@ -206,6 +208,10 @@ export default function HomeContent() {
                 <TerminalSplitLayout />
               </div>
               {isEditorActive && <EditorPanel />}
+              {/* Preview: use display:none to preserve canvas state */}
+              <div style={{ display: isPreviewActive ? 'flex' : 'none', height: '100%' }}>
+                <PreviewPanel />
+              </div>
             </main>
           </div>
         </AppShell>

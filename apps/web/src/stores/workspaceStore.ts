@@ -3,6 +3,7 @@ import { create } from 'zustand';
 export type ActivePane =
   | { kind: 'terminal'; id: string }
   | { kind: 'editor'; id: string }
+  | { kind: 'preview' }
   | null;
 
 interface WorkspaceStore {
