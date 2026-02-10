@@ -43,6 +43,8 @@ VibePilot brings your terminal, file tree, and code editor to the browser. Run i
 
 ## Architecture
 
+### Component Overview
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Browser (Web)                            │
@@ -61,7 +63,7 @@ VibePilot brings your terminal, file tree, and code editor to the browser. Run i
 └───────────────────────────┬─────────────────────────────────────┘
                             │
                             │ @vibepilot/protocol
-                            │ (29 type-safe message types)
+                            │ (36 type-safe message types)
                             │
 ┌───────────────────────────┴─────────────────────────────────────┐
 │                       Agent (Node.js)                           │
@@ -82,7 +84,63 @@ VibePilot brings your terminal, file tree, and code editor to the browser. Run i
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**Communication flow:**
+### Connection Topology
+
+VibePilot uses a **peer-to-peer architecture** where the browser connects directly to the Agent. The control plane (authentication, agent discovery) is separated from the data plane (terminal I/O, file transfers).
+
+**Local & Cloud mode — Browser connects directly to Agent:**
+
+```
+┌──────────┐           WebRTC P2P (STUN)           ┌──────────┐
+│          │◄═══════════════════════════════════════►│          │
+│ Browser  │  Data: terminal-io, file-transfer      │  Agent   │
+│          │                                        │          │
+│          │◄──────── WebSocket (direct) ──────────►│          │
+│          │  Signaling + fallback for all messages  │          │
+└──────────┘                                        └──────────┘
+```
+
+**Connection upgrade flow:**
+
+```
+1. Browser opens WebSocket directly to Agent URL (e.g. wss://my-server:9800)
+2. WebSocket is immediately usable for all message types
+3. Browser initiates WebRTC upgrade in background:
+   a. Creates RTCPeerConnection with STUN server (stun:stun.l.google.com:19302)
+   b. Creates data channels: "terminal-io" (low-latency) + "file-transfer" (reliable)
+   c. Exchanges SDP offer/answer and ICE candidates via the WebSocket
+   d. STUN hole-punching establishes direct P2P connection
+4. Once WebRTC connects, terminal I/O switches to P2P data channel (<10ms latency)
+5. WebSocket remains open for signaling and non-realtime messages
+6. If WebRTC fails, all traffic stays on WebSocket (graceful fallback)
+```
+
+### Data Channels
+
+| Channel         | Mode                      | Purpose                                          | Latency           |
+| --------------- | ------------------------- | ------------------------------------------------ | ----------------- |
+| `terminal-io`   | ordered, maxRetransmits=0 | Terminal input/output                            | <10ms (P2P)       |
+| `file-transfer` | ordered, reliable         | Image transfers, large files                     | Reliable delivery |
+| WebSocket       | TCP                       | Signaling, file tree, editor, project management | ~30-50ms          |
+
+**Key design decision**: Terminal I/O uses `maxRetransmits=0` (unreliable delivery) for minimum latency — a dropped keystroke or partial frame is preferable to head-of-line blocking. File transfers use reliable mode to guarantee data integrity.
+
+### Bandwidth & Cost Architecture
+
+All data flows directly between browser and Agent (P2P). **No traffic passes through any central server**, which means:
+
+- Zero operational bandwidth cost for the cloud operator
+- Latency depends only on the network path between user and Agent
+- Scales to unlimited users without increasing server-side bandwidth
+
+The only central infrastructure needed is for **control plane** operations:
+
+- **Supabase** (or self-hosted DB): authentication, agent registry (tiny API calls)
+- **STUN server**: helps peers discover public addresses (no data relay, ~200 bytes per session)
+
+In the rare case where STUN hole-punching fails (symmetric NAT on both sides, ~15% of cases), a TURN relay would be needed. This is separate from VibePilot infrastructure and can use public TURN services or self-hosted `coturn`.
+
+### Communication Flow
 
 ```
 User Action → Zustand Store → transportManager.send()
@@ -180,6 +238,18 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...your-anon-key
 
 The web app shows a login screen with email/password and OAuth options. After login, users select from their registered agents.
 
+**Cloud connection flow:**
+
+```
+1. User logs in → Supabase Auth (OAuth / email)
+2. User selects Agent → agent.url loaded from Supabase DB (e.g. wss://home.example.com:9800)
+3. Browser connects directly to Agent's WebSocket URL (no relay)
+4. WebRTC P2P upgrade via STUN hole-punching
+5. All terminal/file traffic flows P2P between browser and Agent
+```
+
+Supabase only handles authentication and agent registry (tiny API calls). **No user data or terminal traffic passes through any central server.** The Agent must be reachable from the browser (public IP or VPN).
+
 **Setup steps:**
 
 1. Create a [Supabase](https://supabase.com) project
@@ -234,7 +304,7 @@ Remove a project by ID (first 8 characters are sufficient).
 ```
 vibepilot/
 ├── packages/
-│   ├── protocol/                # @vibepilot/protocol — shared message types
+│   ├── protocol/                # @vibepilot/protocol — shared message types (zero deps)
 │   │   ├── src/
 │   │   │   ├── constants.ts     # 29 message type constants
 │   │   │   ├── messages.ts      # Type-safe payload interfaces + createMessage()
@@ -275,6 +345,10 @@ vibepilot/
 │       │   ├── hooks/           # useTerminal, useKeyboardShortcuts, usePWA
 │       │   └── lib/             # websocket, webrtc, transport, supabase
 │       └── __tests__/           # 176 tests
+│
+├── relay-server/                # Message relay for NAT traversal (planned)
+│                                # Routes VPMessages between browser and agent
+│                                # when direct connection is not possible
 │
 ├── signaling-server/            # Standalone WebRTC signaling relay
 │
@@ -322,8 +396,10 @@ vibepilot/
 
 ### Transport Layer
 
-- **WebRTC preferred** — Automatic upgrade to WebRTC data channels for low-latency terminal I/O
-- **WebSocket fallback** — Graceful degradation when WebRTC is unavailable
+- **P2P architecture** — Browser connects directly to Agent; no data passes through central servers
+- **WebRTC preferred** — Automatic upgrade to WebRTC data channels via STUN hole-punching (`stun:stun.l.google.com:19302`)
+- **Dual data channels** — `terminal-io` (ordered, unreliable for minimum latency) + `file-transfer` (ordered, reliable for data integrity)
+- **WebSocket fallback** — Graceful degradation when WebRTC is unavailable; all message types work over WebSocket
 - **Auto-reconnect** — 3-second reconnect delay on connection loss
 - **Status indicators** — Real-time display of active transport (WS/WebRTC) in the status bar
 
@@ -487,7 +563,8 @@ pnpm --filter web start
 - **Message size limit** — WebSocket `maxPayload` set to 10MB to prevent memory exhaustion
 - **Authentication** — Pluggable auth with timing-safe token comparison and JWKS JWT verification
 - **Row Level Security** — Supabase RLS ensures user isolation at the database level
-- **Transport encryption** — WebRTC uses DTLS/SRTP; WSS recommended for production
+- **P2P data plane** — All terminal/file traffic flows directly between browser and Agent; no data passes through central servers
+- **Transport encryption** — WebRTC uses DTLS; WebSocket should use WSS (TLS) in production
 - **Session isolation** — Each PTY session is sandboxed to its workspace
 - **Input validation** — Project paths checked against forbidden system directories
 - **Auto HTTPS** — Caddy provides automatic TLS certificate management
@@ -529,17 +606,21 @@ pnpm test  # Verify everything passes before making changes
 
 - [x] Terminal with session persistence
 - [x] Monaco Editor with file system integration
-- [x] WebRTC acceleration
+- [x] WebRTC P2P acceleration (STUN hole-punching, dual data channels)
 - [x] Multi-project management
 - [x] Token authentication
 - [x] Supabase Cloud mode (OAuth, agent registry, RLS)
 - [x] Docker deployment with auto HTTPS
 - [x] PWA support
+- [ ] Port forwarding & web preview (preview dev servers through P2P tunnel)
+- [ ] Browser streaming (remote headless Chrome via WebRTC video track)
+- [ ] Mobile simulator streaming (scrcpy/simctl via WebRTC)
+- [ ] Intelligent notification system (command completion, error detection)
+- [ ] AI agent activity monitor (Claude Code/OpenCode output parsing)
 - [ ] Multi-user collaboration (shared terminals)
-- [ ] SSH remote connection support
-- [ ] Plugin system for custom commands
+- [ ] File management (CRUD, Quick Open, global search)
+- [ ] Relay server for NAT traversal (when direct P2P is not possible)
 - [ ] Mobile responsive design
-- [ ] VS Code extension
 
 ---
 

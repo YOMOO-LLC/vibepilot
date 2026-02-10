@@ -24,10 +24,6 @@ vi.mock('@xterm/addon-fit', () => ({
   })),
 }));
 
-vi.mock('@xterm/addon-canvas', () => ({
-  CanvasAddon: vi.fn(),
-}));
-
 vi.mock('@xterm/addon-web-links', () => ({
   WebLinksAddon: vi.fn(),
 }));
@@ -49,12 +45,28 @@ global.ResizeObserver = vi.fn().mockImplementation(() => ({
   disconnect: vi.fn(),
 }));
 
+// Mock requestAnimationFrame to run callback synchronously
+global.requestAnimationFrame = vi.fn((cb) => {
+  cb(0);
+  return 0;
+});
+
+// jsdom returns 0 for offsetWidth/offsetHeight — mock non-zero so terminal opens
+Object.defineProperty(HTMLDivElement.prototype, 'offsetWidth', {
+  configurable: true,
+  get: () => 800,
+});
+Object.defineProperty(HTMLDivElement.prototype, 'offsetHeight', {
+  configurable: true,
+  get: () => 600,
+});
+
 import { TerminalInstance } from '@/components/terminal/TerminalInstance';
 import { transportManager } from '@/lib/transport';
 
 // Get mock terminal through the module
 async function getMockTerminal() {
-  const mod = await import('@xterm/xterm') as any;
+  const mod = (await import('@xterm/xterm')) as any;
   return mod.__mockTerminal;
 }
 
@@ -64,9 +76,7 @@ describe('TerminalInstance', () => {
   });
 
   it('renders terminal container', () => {
-    const { getByTestId } = render(
-      <TerminalInstance sessionId="test-session" />
-    );
+    const { getByTestId } = render(<TerminalInstance sessionId="test-session" />);
 
     expect(getByTestId('terminal-container')).toBeDefined();
   });
@@ -76,7 +86,7 @@ describe('TerminalInstance', () => {
     const mockTerminal = await getMockTerminal();
 
     expect(mockTerminal.open).toHaveBeenCalled();
-    expect(mockTerminal.loadAddon).toHaveBeenCalledTimes(3);
+    expect(mockTerminal.loadAddon).toHaveBeenCalledTimes(2);
   });
 
   it('sends terminal:create on mount', () => {
@@ -102,9 +112,6 @@ describe('TerminalInstance', () => {
   it('listens for terminal:output messages', () => {
     render(<TerminalInstance sessionId="test-session" />);
 
-    expect(transportManager.on).toHaveBeenCalledWith(
-      'terminal:output',
-      expect.any(Function)
-    );
+    expect(transportManager.on).toHaveBeenCalledWith('terminal:output', expect.any(Function));
   });
 });

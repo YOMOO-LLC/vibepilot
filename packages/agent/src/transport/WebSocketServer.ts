@@ -195,7 +195,7 @@ export class VPWebSocketServer {
         const msg = parseMessage(data.toString());
         this.handleMessage(ws, state, msg);
       } catch {
-        // Invalid message, ignore
+        // Parse or handler error — ignore (client will timeout)
       }
     });
 

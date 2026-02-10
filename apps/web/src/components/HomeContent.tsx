@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect } from 'react';
+import { MessageType } from '@vibepilot/protocol';
+import { transportManager } from '@/lib/transport';
 import { TerminalSplitLayout } from '@/components/terminal/TerminalSplitLayout';
 import { ConnectionStatus } from '@/components/connection/ConnectionStatus';
 import { DevicePicker } from '@/components/connection/DevicePicker';
@@ -99,9 +101,20 @@ export default function HomeContent() {
     }
   }, [isAuthed, needsAuth, selectedAgent, connect]);
 
-  // Step 4: Once connected, load projects
+  // Step 4: Once connected, load projects (and re-sync project on reconnect)
   useEffect(() => {
     if (connectionState === 'connected') {
+      // If we already have a project selected (e.g., agent restarted while browser open),
+      // re-sync it with the agent so it updates its cwd/fileTree/fileContent services.
+      const existing = useProjectStore.getState().currentProject;
+      if (existing) {
+        try {
+          transportManager.send(MessageType.PROJECT_SWITCH, { projectId: existing.id });
+        } catch {
+          // Not connected yet
+        }
+      }
+
       const restored = restoreLastProject();
       if (!restored) {
         loadProjects();
