@@ -1,6 +1,8 @@
 import { WebSocketServer, WebSocket } from 'ws';
 import { createServer, type Server as HttpServer, type IncomingMessage } from 'http';
 import type { Duplex } from 'stream';
+import { homedir } from 'os';
+import { join } from 'path';
 import type { AuthProvider } from '../auth/AuthProvider.js';
 import {
   MessageType,
@@ -23,6 +25,10 @@ import {
   type ImageStartPayload,
   type ImageChunkPayload,
   type ImageCompletePayload,
+  type BrowserStartPayload,
+  type BrowserInputPayload,
+  type BrowserNavigatePayload,
+  type BrowserResizePayload,
 } from '@vibepilot/protocol';
 import { PtyManager } from '../pty/PtyManager.js';
 import { SessionPersistenceManager } from '../pty/SessionPersistenceManager.js';
@@ -33,6 +39,7 @@ import { WebRTCPeer } from './WebRTCPeer.js';
 import { ProjectManager } from '../config/ProjectManager.js';
 import { FileContentService } from '../fs/FileContentService.js';
 import { ImageReceiver } from '../image/ImageReceiver.js';
+import { BrowserService } from '../browser/BrowserService.js';
 
 export interface VPWebSocketServerOptions {
   port: number;
@@ -72,6 +79,8 @@ export class VPWebSocketServer {
   private fileContentService: FileContentService;
   private imageReceiver = new ImageReceiver();
   private imageSessionMap = new Map<string, string>(); // transferId → sessionId
+  private browserService: BrowserService;
+  private browserClient: WebSocket | null = null;
   private authProvider?: AuthProvider;
 
   constructor(options: VPWebSocketServerOptions) {
@@ -84,6 +93,15 @@ export class VPWebSocketServer {
     this.authProvider = options.authProvider;
     this.sessionPersistence = new SessionPersistenceManager(this.ptyManager, {
       timeoutMs: options.sessionTimeoutMs,
+    });
+    this.browserService = new BrowserService(join(homedir(), '.vibepilot', 'browser-profiles'));
+
+    // Forward browser frames to the client that started the browser
+    this.browserService.on('frame', (frame) => {
+      if (this.browserClient && this.browserClient.readyState === WebSocket.OPEN) {
+        const frameMsg = createMessage(MessageType.BROWSER_FRAME, frame);
+        this.browserClient.send(JSON.stringify(frameMsg));
+      }
     });
   }
 
@@ -124,6 +142,7 @@ export class VPWebSocketServer {
   async stop(): Promise<void> {
     this.sessionPersistence.destroyAll();
     this.ptyManager.destroyAll();
+    await this.browserService.stop();
     await this.fileWatcher.stop();
 
     return new Promise((resolve) => {
@@ -205,7 +224,7 @@ export class VPWebSocketServer {
     });
   }
 
-  private handleMessage(ws: WebSocket, state: ClientState, msg: VPMessage): void {
+  private async handleMessage(ws: WebSocket, state: ClientState, msg: VPMessage): Promise<void> {
     // Delegate signaling messages to SignalingHandler
     if (SignalingHandler.isSignalingMessage(msg.type)) {
       this.ensureSignalingHandler(ws, state);
@@ -267,6 +286,76 @@ export class VPWebSocketServer {
       case MessageType.IMAGE_COMPLETE:
         this.handleImageComplete(ws, msg.payload as ImageCompletePayload);
         break;
+
+      case MessageType.BROWSER_START: {
+        const payload = msg.payload as BrowserStartPayload;
+        this.browserClient = ws;
+        try {
+          const projectId = this.projectManager.getCurrentProject()?.id ?? 'default';
+          const info = await this.browserService.start(projectId, payload);
+          const response = createMessage(MessageType.BROWSER_STARTED, {
+            cdpPort: info.cdpPort,
+            viewportWidth: info.viewportWidth,
+            viewportHeight: info.viewportHeight,
+          });
+          ws.send(JSON.stringify(response));
+        } catch (err: any) {
+          const response = createMessage(MessageType.BROWSER_ERROR, {
+            error: err.message,
+            code: err.message.includes('not found')
+              ? ('CHROME_NOT_FOUND' as const)
+              : ('LAUNCH_FAILED' as const),
+          });
+          ws.send(JSON.stringify(response));
+        }
+        break;
+      }
+
+      case MessageType.BROWSER_STOP: {
+        await this.browserService.stop();
+        this.browserClient = null;
+        const response = createMessage(MessageType.BROWSER_STOPPED, {});
+        ws.send(JSON.stringify(response));
+        break;
+      }
+
+      case MessageType.BROWSER_INPUT: {
+        try {
+          await this.browserService.handleInput(msg.payload as BrowserInputPayload);
+        } catch {
+          // Browser not started, ignore
+        }
+        break;
+      }
+
+      case MessageType.BROWSER_NAVIGATE: {
+        const { url } = msg.payload as BrowserNavigatePayload;
+        try {
+          await this.browserService.navigate(url);
+        } catch (err: any) {
+          const response = createMessage(MessageType.BROWSER_ERROR, {
+            error: err.message,
+            code: 'NAVIGATE_FAILED' as const,
+          });
+          ws.send(JSON.stringify(response));
+        }
+        break;
+      }
+
+      case MessageType.BROWSER_RESIZE: {
+        const { width, height } = msg.payload as BrowserResizePayload;
+        try {
+          await this.browserService.resize(width, height);
+        } catch {
+          // Browser not started, ignore
+        }
+        break;
+      }
+
+      case MessageType.BROWSER_FRAME_ACK: {
+        // Accepted but unused in Phase 1
+        break;
+      }
     }
   }
 
@@ -494,6 +583,12 @@ export class VPWebSocketServer {
   }
 
   private handleDisconnect(state: ClientState): void {
+    // Clean up browser if this client started it
+    if (this.browserClient === state.ws) {
+      this.browserService.stop().catch(() => {});
+      this.browserClient = null;
+    }
+
     for (const sessionId of state.sessionIds) {
       if (this.ptyManager.hasSession(sessionId) && !this.ptyManager.isExited(sessionId)) {
         // Orphan the session instead of destroying
