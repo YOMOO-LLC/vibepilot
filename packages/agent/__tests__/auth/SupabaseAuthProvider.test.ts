@@ -55,8 +55,8 @@ describe('SupabaseAuthProvider', () => {
     });
   });
 
-  describe('verify', () => {
-    it('returns success with userId when jwt is valid', async () => {
+  describe('verify - JWKS path', () => {
+    it('returns success with userId when jwt is valid via JWKS', async () => {
       const payload: JWTPayload = { sub: TEST_USER_ID, aud: 'authenticated' };
       mockJwtVerify.mockResolvedValue({ payload, protectedHeader: {} });
 
@@ -66,28 +66,6 @@ describe('SupabaseAuthProvider', () => {
       expect(result.success).toBe(true);
       expect(result.userId).toBe(TEST_USER_ID);
       expect(result.error).toBeUndefined();
-    });
-
-    it('returns failure when token is expired', async () => {
-      mockJwtVerify.mockRejectedValue(new Error('"exp" claim timestamp check failed'));
-
-      const provider = new SupabaseAuthProvider(SUPABASE_URL);
-      const result = await provider.verify(TEST_JWT);
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('"exp" claim timestamp check failed');
-      expect(result.userId).toBeUndefined();
-    });
-
-    it('returns failure when signature is invalid', async () => {
-      mockJwtVerify.mockRejectedValue(new Error('signature verification failed'));
-
-      const provider = new SupabaseAuthProvider(SUPABASE_URL);
-      const result = await provider.verify(TEST_JWT);
-
-      expect(result.success).toBe(false);
-      expect(result.error).toBe('signature verification failed');
-      expect(result.userId).toBeUndefined();
     });
 
     it('returns failure when payload has no sub claim', async () => {
@@ -114,15 +92,69 @@ describe('SupabaseAuthProvider', () => {
         audience: 'authenticated',
       });
     });
+  });
 
-    it('returns generic error message for non-Error exceptions', async () => {
-      mockJwtVerify.mockRejectedValue('string error');
+  describe('verify - user endpoint fallback', () => {
+    it('falls back to /auth/v1/user when JWKS verification fails', async () => {
+      mockJwtVerify.mockRejectedValue(new Error('no applicable key found'));
+
+      const mockResponse = {
+        ok: true,
+        json: vi.fn().mockResolvedValue({ id: TEST_USER_ID, email: 'test@example.com' }),
+      };
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      const provider = new SupabaseAuthProvider(SUPABASE_URL);
+      const result = await provider.verify(TEST_JWT);
+
+      expect(result.success).toBe(true);
+      expect(result.userId).toBe(TEST_USER_ID);
+      expect(globalThis.fetch).toHaveBeenCalledWith(`${SUPABASE_URL}/auth/v1/user`, {
+        headers: {
+          apikey: TEST_JWT,
+          Authorization: `Bearer ${TEST_JWT}`,
+        },
+      });
+    });
+
+    it('returns failure when both JWKS and user endpoint fail', async () => {
+      mockJwtVerify.mockRejectedValue(new Error('signature verification failed'));
+
+      const mockResponse = { ok: false, status: 401 };
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
 
       const provider = new SupabaseAuthProvider(SUPABASE_URL);
       const result = await provider.verify(TEST_JWT);
 
       expect(result.success).toBe(false);
-      expect(result.error).toBe('JWT verification failed');
+      expect(result.error).toBe('Auth endpoint returned 401');
+    });
+
+    it('returns failure when user endpoint returns no id', async () => {
+      mockJwtVerify.mockRejectedValue(new Error('JWKS failed'));
+
+      const mockResponse = {
+        ok: true,
+        json: vi.fn().mockResolvedValue({ email: 'test@example.com' }),
+      };
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(mockResponse as unknown as Response);
+
+      const provider = new SupabaseAuthProvider(SUPABASE_URL);
+      const result = await provider.verify(TEST_JWT);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('No user ID in response');
+    });
+
+    it('returns failure when user endpoint fetch throws', async () => {
+      mockJwtVerify.mockRejectedValue(new Error('JWKS failed'));
+      vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Network error'));
+
+      const provider = new SupabaseAuthProvider(SUPABASE_URL);
+      const result = await provider.verify(TEST_JWT);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Network error');
     });
   });
 

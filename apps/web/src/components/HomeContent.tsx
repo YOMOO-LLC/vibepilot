@@ -77,12 +77,17 @@ export default function HomeContent() {
   }, [needsAuth, restoreSession, initSupabaseListener]);
 
   // Step 2: Once authenticated, load agents
+  // In Supabase mode, loadAgents fetches from DB and auto-selects/restores.
+  // In Token mode, it loads from localStorage, then we restore the last agent.
   useEffect(() => {
     if (!isAuthed) return;
 
     if (needsAuth) {
-      loadAgents();
-      restoreLastAgent();
+      loadAgents().then(() => {
+        if (AUTH_MODE !== 'supabase') {
+          restoreLastAgent();
+        }
+      });
     }
   }, [isAuthed, needsAuth, loadAgents, restoreLastAgent]);
 

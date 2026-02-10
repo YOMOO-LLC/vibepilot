@@ -31,29 +31,30 @@ describe('agentStore', () => {
       agents: [],
       selectedAgent: null,
       showSelector: false,
+      loading: false,
     });
   });
 
   describe('loadAgents', () => {
-    it('loads agents from localStorage', () => {
+    it('loads agents from localStorage', async () => {
       const agents = [{ id: 'a1', name: 'Home', url: 'ws://home:9800' }];
       localStorageMock.getItem.mockReturnValueOnce(JSON.stringify(agents));
 
-      useAgentStore.getState().loadAgents();
+      await useAgentStore.getState().loadAgents();
 
       expect(useAgentStore.getState().agents).toEqual(agents);
     });
 
-    it('shows selector when no agents found', () => {
-      useAgentStore.getState().loadAgents();
+    it('shows selector when no agents found', async () => {
+      await useAgentStore.getState().loadAgents();
 
       expect(useAgentStore.getState().showSelector).toBe(true);
     });
 
-    it('handles invalid JSON gracefully', () => {
+    it('handles invalid JSON gracefully', async () => {
       localStorageMock.getItem.mockReturnValueOnce('not-json');
 
-      useAgentStore.getState().loadAgents();
+      await useAgentStore.getState().loadAgents();
 
       expect(useAgentStore.getState().agents).toEqual([]);
       expect(useAgentStore.getState().showSelector).toBe(true);

@@ -3,8 +3,11 @@
 import { useState, useCallback } from 'react';
 import { useAgentStore, type AgentInfo } from '@/stores/agentStore';
 
+const AUTH_MODE = process.env.NEXT_PUBLIC_AUTH_MODE || 'none';
+
 function AgentCard({ agent, onSelect }: { agent: AgentInfo; onSelect: (id: string) => void }) {
   const { removeAgent } = useAgentStore();
+  const isSupabase = AUTH_MODE === 'supabase';
 
   return (
     <div className="group relative">
@@ -30,28 +33,31 @@ function AgentCard({ agent, onSelect }: { agent: AgentInfo; onSelect: (id: strin
         <h3 className="text-lg font-semibold text-zinc-100 mb-1 truncate">{agent.name}</h3>
         <p className="text-sm text-zinc-500 truncate">{agent.url}</p>
       </button>
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          removeAgent(agent.id);
-        }}
-        className="absolute top-3 right-3 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-zinc-700 transition-all"
-        title="Remove agent"
-      >
-        <svg
-          className="w-4 h-4 text-zinc-400"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
+      {/* Only show remove button for manually-added agents (non-Supabase) */}
+      {!isSupabase && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            removeAgent(agent.id);
+          }}
+          className="absolute top-3 right-3 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-zinc-700 transition-all"
+          title="Remove agent"
         >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M6 18L18 6M6 6l12 12"
-          />
-        </svg>
-      </button>
+          <svg
+            className="w-4 h-4 text-zinc-400"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        </button>
+      )}
     </div>
   );
 }
@@ -122,14 +128,41 @@ function AddAgentForm({ onAdded }: { onAdded: () => void }) {
 }
 
 export function AgentSelectorScreen() {
-  const { agents, selectAgent } = useAgentStore();
-  const [showAddForm, setShowAddForm] = useState(agents.length === 0);
+  const { agents, selectAgent, loadAgents, loading } = useAgentStore();
+  const [showAddForm, setShowAddForm] = useState(false);
+  const isSupabase = AUTH_MODE === 'supabase';
+
+  const handleRefresh = useCallback(() => {
+    loadAgents();
+  }, [loadAgents]);
+
+  if (loading) {
+    return (
+      <div className="fixed inset-0 z-50 bg-zinc-950 flex items-center justify-center">
+        <p className="text-zinc-400">Loading agents...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 bg-zinc-950 flex flex-col items-center justify-center">
       <div className="w-full max-w-3xl px-8">
-        <h1 className="text-3xl font-bold text-zinc-100 mb-2">Select an Agent</h1>
-        <p className="text-zinc-400 mb-8">Choose a VibePilot agent to connect to.</p>
+        <div className="flex items-center justify-between mb-2">
+          <h1 className="text-3xl font-bold text-zinc-100">Select an Agent</h1>
+          {isSupabase && (
+            <button
+              onClick={handleRefresh}
+              className="px-3 py-1.5 text-sm text-zinc-400 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-500 rounded-lg transition-colors"
+            >
+              Refresh
+            </button>
+          )}
+        </div>
+        <p className="text-zinc-400 mb-8">
+          {isSupabase
+            ? 'Your registered agents are shown below.'
+            : 'Choose a VibePilot agent to connect to.'}
+        </p>
 
         {agents.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -139,20 +172,26 @@ export function AgentSelectorScreen() {
           </div>
         ) : (
           <div className="text-center py-8 mb-6">
-            <p className="text-zinc-500 mb-4">No agents configured yet.</p>
+            <p className="text-zinc-500 mb-4">
+              {isSupabase
+                ? 'No online agents found. Start a VibePilot agent with --supabase-url and --owner-id to register it.'
+                : 'No agents configured yet.'}
+            </p>
           </div>
         )}
 
-        {showAddForm ? (
-          <AddAgentForm onAdded={() => setShowAddForm(false)} />
-        ) : (
-          <button
-            onClick={() => setShowAddForm(true)}
-            className="w-full py-3 border-2 border-dashed border-zinc-700 rounded-lg text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-colors"
-          >
-            + Add New Agent
-          </button>
-        )}
+        {/* Manual add form: always available in token mode, hidden by default in supabase mode */}
+        {!isSupabase &&
+          (showAddForm ? (
+            <AddAgentForm onAdded={() => setShowAddForm(false)} />
+          ) : (
+            <button
+              onClick={() => setShowAddForm(true)}
+              className="w-full py-3 border-2 border-dashed border-zinc-700 rounded-lg text-zinc-400 hover:text-zinc-200 hover:border-zinc-500 transition-colors"
+            >
+              + Add New Agent
+            </button>
+          ))}
       </div>
     </div>
   );
