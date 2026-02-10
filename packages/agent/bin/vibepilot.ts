@@ -70,7 +70,7 @@ program
     if (supabaseUrl && supabaseKey) {
       // Supabase registry mode (explicit service_role key)
       registry = new SupabaseRegistry(supabaseUrl, supabaseKey);
-      const effectivePublicUrl = publicUrl || `wss://localhost:${port}`;
+      const effectivePublicUrl = publicUrl || `ws://localhost:${port}`;
 
       const ownerId = opts.ownerId || process.env.VP_OWNER_ID;
       if (!ownerId) {
@@ -109,7 +109,7 @@ program
             refreshed.anonKey,
             refreshed.accessToken
           );
-          const effectivePublicUrl = publicUrl || `wss://localhost:${port}`;
+          const effectivePublicUrl = publicUrl || `ws://localhost:${port}`;
 
           const agentInfo = await registry.register({
             name: agentName,
@@ -154,14 +154,21 @@ program
     const server = new VPWebSocketServer({ port, cwd, sessionTimeoutMs, authProvider });
     await server.start();
 
-    const authMode = supabaseUrl ? 'supabase' : authProvider ? 'token' : 'none';
+    const authLabel =
+      authProvider instanceof SupabaseAuthProvider ? 'supabase' : authProvider ? 'token' : 'none';
+    const registryLabel =
+      registry instanceof SupabaseRegistry || registry instanceof SupabaseUserRegistry
+        ? 'supabase'
+        : registry
+          ? 'filesystem'
+          : 'none';
     logger.info(
       {
         port,
         cwd,
         sessionTimeout: `${sessionTimeoutMs / 1000}s`,
-        auth: authMode,
-        registry: supabaseUrl ? 'supabase' : registry ? 'filesystem' : 'none',
+        auth: authLabel,
+        registry: registryLabel,
       },
       'VibePilot Agent started'
     );

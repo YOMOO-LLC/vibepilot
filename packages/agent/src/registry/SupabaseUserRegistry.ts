@@ -31,7 +31,7 @@ export class SupabaseUserRegistry implements AgentRegistry {
   }
 
   async register(input: AgentRegistration): Promise<AgentInfo> {
-    const response = await this.request('/rest/v1/agents', {
+    const response = await this.request('/rest/v1/agents?on_conflict=owner_id,public_url', {
       method: 'POST',
       headers: {
         Prefer: 'return=representation,resolution=merge-duplicates',

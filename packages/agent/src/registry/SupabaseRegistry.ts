@@ -18,7 +18,7 @@ export class SupabaseRegistry implements AgentRegistry {
 
   async register(input: AgentRegistration): Promise<AgentInfo> {
     // Upsert: if same public_url + owner_id exists, update it
-    const response = await this.request('/rest/v1/agents', {
+    const response = await this.request('/rest/v1/agents?on_conflict=owner_id,public_url', {
       method: 'POST',
       headers: {
         Prefer: 'return=representation,resolution=merge-duplicates',

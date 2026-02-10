@@ -97,7 +97,7 @@ describe('SupabaseRegistry', () => {
       expect(fetchMock).toHaveBeenCalledTimes(1);
 
       const [url, init] = fetchMock.mock.calls[0];
-      expect(url).toBe(`${SUPABASE_URL}/rest/v1/agents`);
+      expect(url).toBe(`${SUPABASE_URL}/rest/v1/agents?on_conflict=owner_id,public_url`);
       expect(init.method).toBe('POST');
 
       const body = JSON.parse(init.body);

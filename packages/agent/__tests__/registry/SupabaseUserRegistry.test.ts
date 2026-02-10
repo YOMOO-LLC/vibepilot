@@ -52,7 +52,7 @@ describe('SupabaseUserRegistry', () => {
 
       expect(fetchSpy).toHaveBeenCalledTimes(1);
       const [url, init] = fetchSpy.mock.calls[0];
-      expect(url).toBe(`${SUPABASE_URL}/rest/v1/agents`);
+      expect(url).toBe(`${SUPABASE_URL}/rest/v1/agents?on_conflict=owner_id,public_url`);
       expect((init as any).headers.apikey).toBe(ANON_KEY);
       expect((init as any).headers.Authorization).toBe(`Bearer ${USER_JWT}`);
     });
