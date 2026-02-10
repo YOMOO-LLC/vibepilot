@@ -54,10 +54,7 @@ describe('TransportManager', () => {
 
   it('connect establishes websocket connection', () => {
     manager.connect('ws://localhost:9800');
-    expect(mockWsClient.connect).toHaveBeenCalledWith(
-      'ws://localhost:9800',
-      expect.any(Function)
-    );
+    expect(mockWsClient.connect).toHaveBeenCalledWith('ws://localhost:9800', expect.any(Function));
   });
 
   it('attempts WebRTC upgrade after WS connects', () => {
@@ -91,11 +88,10 @@ describe('TransportManager', () => {
     });
 
     // Should go through WebRTC
-    expect(mockWebRTCClient.send).toHaveBeenCalledWith(
-      'terminal-io',
-      MessageType.TERMINAL_INPUT,
-      { sessionId: 'sess-1', data: 'hello' }
-    );
+    expect(mockWebRTCClient.send).toHaveBeenCalledWith('terminal-io', MessageType.TERMINAL_INPUT, {
+      sessionId: 'sess-1',
+      data: 'hello',
+    });
     expect(mockWsClient.send).not.toHaveBeenCalled();
   });
 
@@ -116,10 +112,10 @@ describe('TransportManager', () => {
     });
 
     // Should fall back to WS
-    expect(mockWsClient.send).toHaveBeenCalledWith(
-      MessageType.TERMINAL_INPUT,
-      { sessionId: 'sess-1', data: 'hello' }
-    );
+    expect(mockWsClient.send).toHaveBeenCalledWith(MessageType.TERMINAL_INPUT, {
+      sessionId: 'sess-1',
+      data: 'hello',
+    });
   });
 
   it('sends image messages via WebRTC file-transfer channel when connected', () => {
@@ -140,11 +136,11 @@ describe('TransportManager', () => {
       data: 'base64data',
     });
 
-    expect(mockWebRTCClient.send).toHaveBeenCalledWith(
-      'file-transfer',
-      MessageType.IMAGE_CHUNK,
-      { transferId: 't-1', chunkIndex: 0, data: 'base64data' }
-    );
+    expect(mockWebRTCClient.send).toHaveBeenCalledWith('file-transfer', MessageType.IMAGE_CHUNK, {
+      transferId: 't-1',
+      chunkIndex: 0,
+      data: 'base64data',
+    });
   });
 
   it('always sends control messages via WebSocket', () => {
@@ -161,10 +157,7 @@ describe('TransportManager', () => {
     // filetree messages should always go through WS
     manager.send(MessageType.FILETREE_LIST, { path: '/' });
 
-    expect(mockWsClient.send).toHaveBeenCalledWith(
-      MessageType.FILETREE_LIST,
-      { path: '/' }
-    );
+    expect(mockWsClient.send).toHaveBeenCalledWith(MessageType.FILETREE_LIST, { path: '/' });
     expect(mockWebRTCClient.send).not.toHaveBeenCalled();
   });
 
@@ -180,10 +173,7 @@ describe('TransportManager', () => {
 
     manager.send(MessageType.SIGNAL_OFFER, { sdp: 'test' });
 
-    expect(mockWsClient.send).toHaveBeenCalledWith(
-      MessageType.SIGNAL_OFFER,
-      { sdp: 'test' }
-    );
+    expect(mockWsClient.send).toHaveBeenCalledWith(MessageType.SIGNAL_OFFER, { sdp: 'test' });
     expect(mockWebRTCClient.send).not.toHaveBeenCalled();
   });
 
@@ -199,10 +189,9 @@ describe('TransportManager', () => {
 
     manager.send(MessageType.PROJECT_SWITCH, { projectId: 'p-1' });
 
-    expect(mockWsClient.send).toHaveBeenCalledWith(
-      MessageType.PROJECT_SWITCH,
-      { projectId: 'p-1' }
-    );
+    expect(mockWsClient.send).toHaveBeenCalledWith(MessageType.PROJECT_SWITCH, {
+      projectId: 'p-1',
+    });
     expect(mockWebRTCClient.send).not.toHaveBeenCalled();
   });
 
@@ -210,10 +199,7 @@ describe('TransportManager', () => {
     const handler = vi.fn();
     manager.on(MessageType.TERMINAL_OUTPUT, handler);
 
-    expect(mockWsClient.on).toHaveBeenCalledWith(
-      MessageType.TERMINAL_OUTPUT,
-      expect.any(Function)
-    );
+    expect(mockWsClient.on).toHaveBeenCalledWith(MessageType.TERMINAL_OUTPUT, expect.any(Function));
     expect(mockWebRTCClient.on).toHaveBeenCalledWith(
       MessageType.TERMINAL_OUTPUT,
       expect.any(Function)
@@ -268,10 +254,10 @@ describe('TransportManager', () => {
       data: 'hello',
     });
 
-    expect(mockWsClient.send).toHaveBeenCalledWith(
-      MessageType.TERMINAL_INPUT,
-      { sessionId: 'sess-1', data: 'hello' }
-    );
+    expect(mockWsClient.send).toHaveBeenCalledWith(MessageType.TERMINAL_INPUT, {
+      sessionId: 'sess-1',
+      data: 'hello',
+    });
   });
 
   it('activeTransport becomes webrtc when WebRTC connects', () => {
@@ -335,10 +321,106 @@ describe('TransportManager', () => {
       payload: { candidate: 'remote-candidate', sdpMid: '0', sdpMLineIndex: 0 },
     });
 
-    expect(mockWebRTCClient.addIceCandidate).toHaveBeenCalledWith(
-      'remote-candidate',
-      '0',
-      0
+    expect(mockWebRTCClient.addIceCandidate).toHaveBeenCalledWith('remote-candidate', '0', 0);
+  });
+
+  it('routes browser:input to browser-stream channel via WebRTC', () => {
+    manager.connect('ws://localhost:9800');
+
+    const wsCallback = mockWsClient.connect.mock.calls[0][1];
+    wsCallback('connected');
+
+    mockWebRTCClient.state = 'connected';
+    const rtcStateCallback = mockWebRTCClient.createOffer.mock.calls[0][1];
+    rtcStateCallback('connected');
+
+    manager.send(MessageType.BROWSER_INPUT, {
+      type: 'mousePressed',
+      x: 100,
+      y: 200,
+      button: 0,
+      modifiers: 0,
+    });
+
+    expect(mockWebRTCClient.send).toHaveBeenCalledWith(
+      'browser-stream',
+      MessageType.BROWSER_INPUT,
+      { type: 'mousePressed', x: 100, y: 200, button: 0, modifiers: 0 }
     );
+    expect(mockWsClient.send).not.toHaveBeenCalled();
+  });
+
+  it('routes browser:frame-ack to browser-stream channel via WebRTC', () => {
+    manager.connect('ws://localhost:9800');
+
+    const wsCallback = mockWsClient.connect.mock.calls[0][1];
+    wsCallback('connected');
+
+    mockWebRTCClient.state = 'connected';
+    const rtcStateCallback = mockWebRTCClient.createOffer.mock.calls[0][1];
+    rtcStateCallback('connected');
+
+    manager.send(MessageType.BROWSER_FRAME_ACK, {
+      timestamp: 12345,
+    });
+
+    expect(mockWebRTCClient.send).toHaveBeenCalledWith(
+      'browser-stream',
+      MessageType.BROWSER_FRAME_ACK,
+      { timestamp: 12345 }
+    );
+  });
+
+  it('falls back to WebSocket for browser messages when WebRTC disconnected', () => {
+    manager.connect('ws://localhost:9800');
+
+    const wsCallback = mockWsClient.connect.mock.calls[0][1];
+    wsCallback('connected');
+    mockWsClient.state = 'connected';
+    mockWebRTCClient.state = 'disconnected';
+
+    manager.send(MessageType.BROWSER_INPUT, {
+      type: 'mousePressed',
+      x: 100,
+      y: 200,
+      button: 0,
+      modifiers: 0,
+    });
+
+    expect(mockWsClient.send).toHaveBeenCalledWith(MessageType.BROWSER_INPUT, {
+      type: 'mousePressed',
+      x: 100,
+      y: 200,
+      button: 0,
+      modifiers: 0,
+    });
+    expect(mockWebRTCClient.send).not.toHaveBeenCalled();
+  });
+
+  it('sends browser:start via WebSocket (not a stream type)', () => {
+    manager.connect('ws://localhost:9800');
+
+    const wsCallback = mockWsClient.connect.mock.calls[0][1];
+    wsCallback('connected');
+    mockWsClient.state = 'connected';
+    mockWebRTCClient.state = 'connected';
+    const rtcStateCallback = mockWebRTCClient.createOffer.mock.calls[0][1];
+    rtcStateCallback('connected');
+
+    manager.send(MessageType.BROWSER_START, {
+      url: 'http://localhost:3000',
+      width: 1280,
+      height: 720,
+      quality: 70,
+    });
+
+    // browser:start is a control message, not a stream type - goes via WS
+    expect(mockWsClient.send).toHaveBeenCalledWith(MessageType.BROWSER_START, {
+      url: 'http://localhost:3000',
+      width: 1280,
+      height: 720,
+      quality: 70,
+    });
+    expect(mockWebRTCClient.send).not.toHaveBeenCalled();
   });
 });

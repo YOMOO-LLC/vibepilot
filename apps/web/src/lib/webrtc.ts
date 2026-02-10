@@ -1,6 +1,12 @@
 'use client';
 
-import { parseMessage, createMessage, type VPMessage, type MessageTypeValue, MessageType } from '@vibepilot/protocol';
+import {
+  parseMessage,
+  createMessage,
+  type VPMessage,
+  type MessageTypeValue,
+  MessageType,
+} from '@vibepilot/protocol';
 
 export type WebRTCState = 'disconnected' | 'connecting' | 'connected' | 'failed';
 export type MessageHandler = (msg: VPMessage) => void;
@@ -40,6 +46,11 @@ export class VPWebRTCClient {
       ordered: true,
     });
     this.setupDataChannel(fileTransferChannel);
+
+    const browserChannel = this.pc.createDataChannel('browser-stream', {
+      ordered: true,
+    });
+    this.setupDataChannel(browserChannel);
 
     // Handle ICE candidates
     this.pc.onicecandidate = (event) => {
@@ -102,11 +113,7 @@ export class VPWebRTCClient {
     }
   }
 
-  async addIceCandidate(
-    candidate: string,
-    sdpMid?: string,
-    sdpMLineIndex?: number
-  ): Promise<void> {
+  async addIceCandidate(candidate: string, sdpMid?: string, sdpMLineIndex?: number): Promise<void> {
     if (!this.pc) return;
     try {
       const iceCandidate = new RTCIceCandidate({
