@@ -1,10 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  createMessage,
-  parseMessage,
-  MessageType,
-  type VPMessage,
-} from '../src/index.js';
+import { createMessage, parseMessage, MessageType, type VPMessage } from '../src/index.js';
 
 describe('createMessage', () => {
   it('creates a message with correct type and payload', () => {
@@ -102,12 +97,10 @@ describe('parseMessage', () => {
   });
 
   it('throws on missing required fields', () => {
-    expect(() => parseMessage(JSON.stringify({ type: 'foo' }))).toThrow(
+    expect(() => parseMessage(JSON.stringify({ type: 'foo' }))).toThrow('Invalid VPMessage format');
+    expect(() => parseMessage(JSON.stringify({ type: 'foo', id: '1' }))).toThrow(
       'Invalid VPMessage format'
     );
-    expect(() =>
-      parseMessage(JSON.stringify({ type: 'foo', id: '1' }))
-    ).toThrow('Invalid VPMessage format');
   });
 
   it('round-trips with createMessage', () => {
@@ -282,6 +275,90 @@ describe('file content messages', () => {
       mimeType: 'text/plain',
       size: 15,
       readonly: false,
+    });
+    const serialized = JSON.stringify(original);
+    const parsed = parseMessage(serialized);
+
+    expect(parsed.type).toBe(original.type);
+    expect(parsed.payload).toEqual(original.payload);
+  });
+});
+
+describe('browser message types', () => {
+  it('has all browser types', () => {
+    expect(MessageType.BROWSER_START).toBe('browser:start');
+    expect(MessageType.BROWSER_STARTED).toBe('browser:started');
+    expect(MessageType.BROWSER_STOP).toBe('browser:stop');
+    expect(MessageType.BROWSER_STOPPED).toBe('browser:stopped');
+    expect(MessageType.BROWSER_ERROR).toBe('browser:error');
+    expect(MessageType.BROWSER_FRAME).toBe('browser:frame');
+    expect(MessageType.BROWSER_FRAME_ACK).toBe('browser:frame-ack');
+    expect(MessageType.BROWSER_INPUT).toBe('browser:input');
+    expect(MessageType.BROWSER_NAVIGATE).toBe('browser:navigate');
+    expect(MessageType.BROWSER_NAVIGATED).toBe('browser:navigated');
+    expect(MessageType.BROWSER_CURSOR).toBe('browser:cursor');
+    expect(MessageType.BROWSER_RESIZE).toBe('browser:resize');
+  });
+
+  it('creates browser:start message', () => {
+    const msg = createMessage(MessageType.BROWSER_START, {
+      url: 'http://localhost:3000',
+      width: 1280,
+      height: 720,
+      quality: 70,
+    });
+
+    expect(msg.type).toBe('browser:start');
+    expect(msg.payload.url).toBe('http://localhost:3000');
+    expect(msg.payload.width).toBe(1280);
+  });
+
+  it('creates browser:frame message', () => {
+    const msg = createMessage(MessageType.BROWSER_FRAME, {
+      data: 'base64data',
+      encoding: 'jpeg',
+      timestamp: 12345,
+      metadata: {
+        width: 1280,
+        height: 720,
+        pageUrl: 'http://localhost:3000',
+        pageTitle: 'My App',
+      },
+    });
+
+    expect(msg.type).toBe('browser:frame');
+    expect(msg.payload.encoding).toBe('jpeg');
+    expect(msg.payload.metadata.pageTitle).toBe('My App');
+  });
+
+  it('creates browser:input message', () => {
+    const msg = createMessage(MessageType.BROWSER_INPUT, {
+      type: 'mousePressed',
+      x: 100,
+      y: 200,
+      button: 'left',
+      clickCount: 1,
+    });
+
+    expect(msg.type).toBe('browser:input');
+    expect(msg.payload.x).toBe(100);
+    expect(msg.payload.button).toBe('left');
+  });
+
+  it('creates browser:navigate message', () => {
+    const msg = createMessage(MessageType.BROWSER_NAVIGATE, {
+      url: 'http://localhost:3000/about',
+    });
+
+    expect(msg.type).toBe('browser:navigate');
+    expect(msg.payload.url).toBe('http://localhost:3000/about');
+  });
+
+  it('round-trips browser:started message', () => {
+    const original = createMessage(MessageType.BROWSER_STARTED, {
+      cdpPort: 9222,
+      viewportWidth: 1280,
+      viewportHeight: 720,
     });
     const serialized = JSON.stringify(original);
     const parsed = parseMessage(serialized);

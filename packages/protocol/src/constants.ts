@@ -48,6 +48,20 @@ export const MessageType = {
   FILE_WRITE: 'file:write',
   FILE_WRITTEN: 'file:written',
   FILE_ERROR: 'file:error',
+
+  // Browser (12)
+  BROWSER_START: 'browser:start',
+  BROWSER_STARTED: 'browser:started',
+  BROWSER_STOP: 'browser:stop',
+  BROWSER_STOPPED: 'browser:stopped',
+  BROWSER_ERROR: 'browser:error',
+  BROWSER_FRAME: 'browser:frame',
+  BROWSER_FRAME_ACK: 'browser:frame-ack',
+  BROWSER_INPUT: 'browser:input',
+  BROWSER_NAVIGATE: 'browser:navigate',
+  BROWSER_NAVIGATED: 'browser:navigated',
+  BROWSER_CURSOR: 'browser:cursor',
+  BROWSER_RESIZE: 'browser:resize',
 } as const;
 
 export type MessageTypeValue = (typeof MessageType)[keyof typeof MessageType];

@@ -209,6 +209,86 @@ export interface FileErrorPayload {
   error: string;
 }
 
+// --- Browser Messages ---
+
+export interface BrowserStartPayload {
+  url?: string;
+  width?: number;
+  height?: number;
+  quality?: number;
+  mobile?: boolean;
+}
+
+export interface BrowserStartedPayload {
+  cdpPort: number;
+  viewportWidth: number;
+  viewportHeight: number;
+}
+
+export interface BrowserStopPayload {}
+
+export interface BrowserStoppedPayload {}
+
+export interface BrowserErrorPayload {
+  error: string;
+  code: 'CHROME_NOT_FOUND' | 'LAUNCH_FAILED' | 'CDP_ERROR' | 'NAVIGATE_FAILED';
+}
+
+export interface BrowserFramePayload {
+  data: string;
+  encoding: 'jpeg' | 'h264';
+  timestamp: number;
+  metadata: {
+    width: number;
+    height: number;
+    pageUrl: string;
+    pageTitle: string;
+  };
+}
+
+export interface BrowserFrameAckPayload {
+  timestamp: number;
+}
+
+export interface BrowserInputPayload {
+  type:
+    | 'mousePressed'
+    | 'mouseReleased'
+    | 'mouseMoved'
+    | 'mouseWheel'
+    | 'keyDown'
+    | 'keyUp'
+    | 'insertText';
+  x?: number;
+  y?: number;
+  button?: 'left' | 'middle' | 'right';
+  clickCount?: number;
+  deltaX?: number;
+  deltaY?: number;
+  key?: string;
+  code?: string;
+  text?: string;
+  modifiers?: number;
+}
+
+export interface BrowserNavigatePayload {
+  url: string;
+}
+
+export interface BrowserNavigatedPayload {
+  url: string;
+  title: string;
+}
+
+export interface BrowserCursorPayload {
+  cursor: string;
+}
+
+export interface BrowserResizePayload {
+  width: number;
+  height: number;
+}
+
 // --- Message type map ---
 
 export interface MessagePayloadMap {
@@ -248,6 +328,18 @@ export interface MessagePayloadMap {
   [MessageType.FILE_WRITE]: FileWritePayload;
   [MessageType.FILE_WRITTEN]: FileWrittenPayload;
   [MessageType.FILE_ERROR]: FileErrorPayload;
+  [MessageType.BROWSER_START]: BrowserStartPayload;
+  [MessageType.BROWSER_STARTED]: BrowserStartedPayload;
+  [MessageType.BROWSER_STOP]: BrowserStopPayload;
+  [MessageType.BROWSER_STOPPED]: BrowserStoppedPayload;
+  [MessageType.BROWSER_ERROR]: BrowserErrorPayload;
+  [MessageType.BROWSER_FRAME]: BrowserFramePayload;
+  [MessageType.BROWSER_FRAME_ACK]: BrowserFrameAckPayload;
+  [MessageType.BROWSER_INPUT]: BrowserInputPayload;
+  [MessageType.BROWSER_NAVIGATE]: BrowserNavigatePayload;
+  [MessageType.BROWSER_NAVIGATED]: BrowserNavigatedPayload;
+  [MessageType.BROWSER_CURSOR]: BrowserCursorPayload;
+  [MessageType.BROWSER_RESIZE]: BrowserResizePayload;
 }
 
 // --- Helper functions ---
