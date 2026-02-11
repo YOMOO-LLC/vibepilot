@@ -55,6 +55,7 @@ export function PreviewPanel() {
         style={{ cursor: remoteCursor, width: '100%', height: '100%', objectFit: 'contain' }}
         onMouseDown={(e) => {
           e.preventDefault();
+          canvasRef.current?.focus();
           const pos = toRemote(e);
           sendInput({
             type: 'mousePressed',
@@ -98,6 +99,10 @@ export function PreviewPanel() {
             code: e.code,
             modifiers: getModifiers(e),
           });
+          // For printable characters without ctrl/meta, send insertText so CDP inserts the character
+          if (e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
+            sendInput({ type: 'insertText', text: e.key });
+          }
         }}
         onKeyUp={(e) => {
           e.preventDefault();

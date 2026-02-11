@@ -65,4 +65,22 @@ describe('PreviewPanel', () => {
     fireEvent.mouseDown(canvas);
     expect(sendInput).toHaveBeenCalled();
   });
+
+  it('canvas has correct cursor when remoteCursor is pointer', () => {
+    useBrowserStore.setState({ state: 'running', remoteCursor: 'pointer' });
+    render(<PreviewPanel />);
+    const canvas = screen.getByTestId('preview-canvas');
+    expect(canvas.style.cursor).toBe('pointer');
+  });
+
+  it('cursor updates when remoteCursor changes', () => {
+    useBrowserStore.setState({ state: 'running', remoteCursor: 'default' });
+    const { rerender } = render(<PreviewPanel />);
+    const canvas = screen.getByTestId('preview-canvas');
+    expect(canvas.style.cursor).toBe('default');
+
+    useBrowserStore.setState({ remoteCursor: 'text' });
+    rerender(<PreviewPanel />);
+    expect(canvas.style.cursor).toBe('text');
+  });
 });

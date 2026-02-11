@@ -172,4 +172,48 @@ describe('BrowserService', () => {
   it('returns null endpoint when not started', () => {
     expect(service.getCdpEndpoint()).toBeNull();
   });
+
+  it('emits cursor on mouseMoved input', async () => {
+    const startPromise = service.start('project-1');
+    setTimeout(() => {
+      mockChildProcess.stderr.emit(
+        'data',
+        Buffer.from('DevTools listening on ws://127.0.0.1:9222/devtools/browser/abc\n')
+      );
+    }, 10);
+    await startPromise;
+
+    const cursorSpy = vi.fn();
+    service.on('cursor', cursorSpy);
+
+    await service.handleInput({ type: 'mouseMoved', x: 100, y: 200 });
+
+    expect(mockCDPClient.Runtime.evaluate).toHaveBeenCalled();
+    expect(cursorSpy).toHaveBeenCalledWith('default');
+  });
+
+  it('does not emit cursor on non-mouseMoved input', async () => {
+    const startPromise = service.start('project-1');
+    setTimeout(() => {
+      mockChildProcess.stderr.emit(
+        'data',
+        Buffer.from('DevTools listening on ws://127.0.0.1:9222/devtools/browser/abc\n')
+      );
+    }, 10);
+    await startPromise;
+
+    const cursorSpy = vi.fn();
+    service.on('cursor', cursorSpy);
+
+    await service.handleInput({
+      type: 'mousePressed',
+      x: 100,
+      y: 200,
+      button: 'left',
+      clickCount: 1,
+    });
+
+    expect(mockCDPClient.Runtime.evaluate).not.toHaveBeenCalled();
+    expect(cursorSpy).not.toHaveBeenCalled();
+  });
 });

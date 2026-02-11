@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { renderHook } from '@testing-library/react';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useTerminalStore } from '@/stores/terminalStore';
+import { useWorkspaceStore } from '@/stores/workspaceStore';
 
 describe('useKeyboardShortcuts', () => {
   beforeEach(() => {
@@ -61,5 +62,25 @@ describe('useKeyboardShortcuts', () => {
     fireKeydown('Tab', { ctrlKey: true, shiftKey: true });
 
     expect(useTerminalStore.getState().activeTabId).toBe('tab-1');
+  });
+
+  it('Ctrl+Shift+T does NOT create tab when preview active', () => {
+    useWorkspaceStore.setState({ activePane: { kind: 'preview' } });
+    renderHook(() => useKeyboardShortcuts());
+    const tabsBefore = useTerminalStore.getState().tabs.length;
+
+    fireKeydown('T', { ctrlKey: true, shiftKey: true });
+
+    expect(useTerminalStore.getState().tabs.length).toBe(tabsBefore);
+  });
+
+  it('Ctrl+Shift+T still works when terminal active', () => {
+    useWorkspaceStore.setState({ activePane: { kind: 'terminal', id: 'tab-1' } });
+    renderHook(() => useKeyboardShortcuts());
+    const tabsBefore = useTerminalStore.getState().tabs.length;
+
+    fireKeydown('T', { ctrlKey: true, shiftKey: true });
+
+    expect(useTerminalStore.getState().tabs.length).toBe(tabsBefore + 1);
   });
 });

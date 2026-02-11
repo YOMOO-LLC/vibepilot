@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { InputHandler } from '../../src/browser/InputHandler.js';
-import type { BrowserInputPayload } from '@vibepilot/protocol';
 
 describe('InputHandler', () => {
   let mockInput: {
@@ -67,6 +66,22 @@ describe('InputHandler', () => {
       type: 'keyDown',
       key: 'a',
       code: 'KeyA',
+      modifiers: 0,
+    });
+  });
+
+  it('does not add text for special keys like Enter', async () => {
+    await handler.handle({
+      type: 'keyDown',
+      key: 'Enter',
+      code: 'Enter',
+      modifiers: 0,
+    });
+
+    expect(mockInput.dispatchKeyEvent).toHaveBeenCalledWith({
+      type: 'keyDown',
+      key: 'Enter',
+      code: 'Enter',
       modifiers: 0,
     });
   });

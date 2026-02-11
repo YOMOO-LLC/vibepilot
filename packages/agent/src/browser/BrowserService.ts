@@ -5,6 +5,8 @@ import { ChromeDetector } from './ChromeDetector.js';
 import { BrowserProfileManager } from './BrowserProfileManager.js';
 import { ScreencastStream } from './ScreencastStream.js';
 import { InputHandler } from './InputHandler.js';
+import { CursorProbe } from './CursorProbe.js';
+import { AdaptiveQuality } from './AdaptiveQuality.js';
 import type { BrowserInputPayload, BrowserStartPayload } from '@vibepilot/protocol';
 
 interface BrowserInfo {
@@ -19,6 +21,9 @@ export class BrowserService extends EventEmitter {
   private cdpClient: any | null = null;
   private screencast: ScreencastStream | null = null;
   private inputHandler: InputHandler | null = null;
+  private cursorProbe: CursorProbe | null = null;
+  private adaptiveQuality: AdaptiveQuality | null = null;
+  private frameTimestamps = new Map<number, number>();
   private cdpEndpoint: string | null = null;
   private cdpPort: number | null = null;
   private viewportWidth = 1280;
@@ -65,7 +70,7 @@ export class BrowserService extends EventEmitter {
 
     // Connect CDP
     this.cdpClient = await CDP({ port });
-    const { Page, Input, Emulation } = this.cdpClient;
+    const { Page, Input, Emulation, Runtime } = this.cdpClient;
 
     await Page.enable();
     await Emulation.setDeviceMetricsOverride({
@@ -78,10 +83,12 @@ export class BrowserService extends EventEmitter {
     // Setup screencast
     this.screencast = new ScreencastStream(Page);
     this.screencast.on('frame', (frame: any) => {
+      const timestamp = Date.now();
+      this.frameTimestamps.set(timestamp, timestamp);
       this.emit('frame', {
         data: frame.data,
         encoding: 'jpeg' as const,
-        timestamp: Date.now(),
+        timestamp,
         metadata: {
           width: frame.metadata.deviceWidth ?? this.viewportWidth,
           height: frame.metadata.deviceHeight ?? this.viewportHeight,
@@ -95,6 +102,12 @@ export class BrowserService extends EventEmitter {
     // Setup input handler
     this.inputHandler = new InputHandler(Input);
     this.inputHandler.setViewport(width, height);
+
+    // Setup cursor probe
+    this.cursorProbe = new CursorProbe(Runtime);
+
+    // Setup adaptive quality
+    this.adaptiveQuality = new AdaptiveQuality(quality);
 
     // Navigate to initial URL if provided
     if (options?.url) {
@@ -120,6 +133,9 @@ export class BrowserService extends EventEmitter {
     this.cdpEndpoint = null;
     this.cdpPort = null;
     this.inputHandler = null;
+    this.cursorProbe = null;
+    this.adaptiveQuality = null;
+    this.frameTimestamps.clear();
   }
 
   async navigate(url: string): Promise<void> {
@@ -130,6 +146,26 @@ export class BrowserService extends EventEmitter {
   async handleInput(input: BrowserInputPayload): Promise<void> {
     if (!this.inputHandler) throw new Error('Browser not started');
     await this.inputHandler.handle(input);
+
+    if (input.type === 'mouseMoved' && this.cursorProbe) {
+      const cursor = await this.cursorProbe.probe(input.x ?? 0, input.y ?? 0);
+      if (cursor !== null) {
+        this.emit('cursor', cursor);
+      }
+    }
+  }
+
+  async ackFrame(timestamp: number): Promise<void> {
+    const sentAt = this.frameTimestamps.get(timestamp);
+    if (!sentAt || !this.adaptiveQuality || !this.screencast) return;
+    this.frameTimestamps.delete(timestamp);
+
+    const latency = Date.now() - sentAt;
+    this.adaptiveQuality.recordLatency(latency);
+
+    if (this.adaptiveQuality.shouldRestart()) {
+      await this.screencast.setQuality(this.adaptiveQuality.quality);
+    }
   }
 
   async resize(width: number, height: number): Promise<void> {

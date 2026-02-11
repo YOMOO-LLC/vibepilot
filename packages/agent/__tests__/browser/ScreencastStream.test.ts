@@ -94,4 +94,19 @@ describe('ScreencastStream', () => {
     // Should not ack after stop
     expect(mockPage.screencastFrameAck).not.toHaveBeenCalledWith({ sessionId: 99 });
   });
+
+  it('setQuality restarts with new quality', async () => {
+    await stream.start({ quality: 70, maxWidth: 1280, maxHeight: 720 });
+
+    expect(mockPage.startScreencast).toHaveBeenCalledTimes(1);
+
+    await stream.setQuality(50);
+
+    // Should have stopped and restarted
+    expect(mockPage.stopScreencast).toHaveBeenCalledTimes(1);
+    expect(mockPage.startScreencast).toHaveBeenCalledTimes(2);
+    expect(mockPage.startScreencast).toHaveBeenLastCalledWith(
+      expect.objectContaining({ quality: 50 })
+    );
+  });
 });

@@ -6,14 +6,20 @@ import { useEditorStore } from '@/stores/editorStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
 
 export function useKeyboardShortcuts() {
-  const { createTab, closeTab: closeTerminalTab, nextTab, prevTab, activeTabId: terminalActiveTabId } =
-    useTerminalStore();
-  const { closeFile, saveFile, activeTabId: editorActiveTabId } =
-    useEditorStore();
+  const {
+    createTab,
+    closeTab: closeTerminalTab,
+    nextTab,
+    prevTab,
+    activeTabId: terminalActiveTabId,
+  } = useTerminalStore();
+  const { closeFile, saveFile, activeTabId: editorActiveTabId } = useEditorStore();
   const activePane = useWorkspaceStore((s) => s.activePane);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (activePane?.kind === 'preview') return;
+
       // Ctrl+S / Cmd+S → Save current editor file
       if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 's') {
         e.preventDefault();
@@ -67,5 +73,15 @@ export function useKeyboardShortcuts() {
 
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [createTab, closeTerminalTab, closeFile, saveFile, nextTab, prevTab, terminalActiveTabId, editorActiveTabId, activePane]);
+  }, [
+    createTab,
+    closeTerminalTab,
+    closeFile,
+    saveFile,
+    nextTab,
+    prevTab,
+    terminalActiveTabId,
+    editorActiveTabId,
+    activePane,
+  ]);
 }

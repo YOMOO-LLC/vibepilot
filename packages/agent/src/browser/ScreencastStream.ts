@@ -11,13 +11,15 @@ interface CDPPage {
   stopScreencast(): Promise<void>;
   screencastFrameAck(params: { sessionId: number }): Promise<void>;
   on(event: string, handler: (...args: any[]) => void): void;
-  off(event: string, handler: (...args: any[]) => void): void;
+  off?(event: string, handler: (...args: any[]) => void): void;
+  removeListener?(event: string, handler: (...args: any[]) => void): void;
 }
 
 export class ScreencastStream extends EventEmitter {
   private cdpPage: CDPPage;
   private running = false;
   private frameHandler: ((params: any) => void) | null = null;
+  private lastOptions: ScreencastOptions = {};
 
   constructor(cdpPage: CDPPage) {
     super();
@@ -26,9 +28,10 @@ export class ScreencastStream extends EventEmitter {
 
   async start(options?: ScreencastOptions): Promise<void> {
     this.running = true;
-    const quality = options?.quality ?? 70;
-    const maxWidth = options?.maxWidth ?? 1280;
-    const maxHeight = options?.maxHeight ?? 720;
+    if (options) this.lastOptions = { ...this.lastOptions, ...options };
+    const quality = this.lastOptions.quality ?? 70;
+    const maxWidth = this.lastOptions.maxWidth ?? 1280;
+    const maxHeight = this.lastOptions.maxHeight ?? 720;
 
     this.frameHandler = (params: any) => {
       if (!this.running) return;
@@ -53,9 +56,15 @@ export class ScreencastStream extends EventEmitter {
   async stop(): Promise<void> {
     this.running = false;
     if (this.frameHandler) {
-      this.cdpPage.off('screencastFrame', this.frameHandler);
+      const remove = this.cdpPage.off ?? this.cdpPage.removeListener;
+      remove?.call(this.cdpPage, 'screencastFrame', this.frameHandler);
       this.frameHandler = null;
     }
     await this.cdpPage.stopScreencast();
+  }
+
+  async setQuality(quality: number): Promise<void> {
+    await this.stop();
+    await this.start({ quality });
   }
 }

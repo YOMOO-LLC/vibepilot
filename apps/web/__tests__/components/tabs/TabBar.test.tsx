@@ -4,6 +4,7 @@ import { TabBar } from '@/components/tabs/TabBar';
 import { useTerminalStore } from '@/stores/terminalStore';
 import { useEditorStore } from '@/stores/editorStore';
 import { useWorkspaceStore } from '@/stores/workspaceStore';
+import { useBrowserStore } from '@/stores/browserStore';
 
 // Mock transport manager
 vi.mock('@/lib/transport', () => {
@@ -42,6 +43,9 @@ describe('TabBar', () => {
     });
     useWorkspaceStore.setState({
       activePane: null,
+    });
+    useBrowserStore.setState({
+      state: 'idle',
     });
   });
 
@@ -123,9 +127,58 @@ describe('TabBar', () => {
 
   it('clicking + button creates a new terminal', () => {
     render(<TabBar />);
+    // Open the dropdown menu first
     fireEvent.click(screen.getByTestId('new-tab-button'));
+    // Then click New Terminal
+    fireEvent.click(screen.getByText('New Terminal'));
 
     const state = useTerminalStore.getState();
     expect(state.tabs).toHaveLength(1);
+  });
+
+  describe('+ button dropdown menu', () => {
+    it('shows dropdown with New Terminal and Open Preview options', () => {
+      render(<TabBar />);
+      // Menu should not be visible initially
+      expect(screen.queryByTestId('new-tab-menu')).toBeNull();
+
+      // Click + button to open menu
+      fireEvent.click(screen.getByTestId('new-tab-button'));
+
+      // Menu should now be visible with both options
+      expect(screen.getByTestId('new-tab-menu')).toBeTruthy();
+      expect(screen.getByText('New Terminal')).toBeTruthy();
+      expect(screen.getByText('Open Preview')).toBeTruthy();
+    });
+
+    it('clicking New Terminal creates a new terminal tab and closes menu', () => {
+      render(<TabBar />);
+      fireEvent.click(screen.getByTestId('new-tab-button'));
+      fireEvent.click(screen.getByText('New Terminal'));
+
+      // Terminal should be created
+      const termState = useTerminalStore.getState();
+      expect(termState.tabs).toHaveLength(1);
+
+      // Active pane should be set to the new terminal
+      const wsState = useWorkspaceStore.getState();
+      expect(wsState.activePane?.kind).toBe('terminal');
+
+      // Menu should be closed
+      expect(screen.queryByTestId('new-tab-menu')).toBeNull();
+    });
+
+    it('clicking Open Preview sets activePane to preview and closes menu', () => {
+      render(<TabBar />);
+      fireEvent.click(screen.getByTestId('new-tab-button'));
+      fireEvent.click(screen.getByText('Open Preview'));
+
+      // Active pane should be preview
+      const wsState = useWorkspaceStore.getState();
+      expect(wsState.activePane).toEqual({ kind: 'preview' });
+
+      // Menu should be closed
+      expect(screen.queryByTestId('new-tab-menu')).toBeNull();
+    });
   });
 });

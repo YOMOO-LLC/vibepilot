@@ -103,6 +103,14 @@ export class VPWebSocketServer {
         this.browserClient.send(JSON.stringify(frameMsg));
       }
     });
+
+    // Forward cursor changes to the browser client
+    this.browserService.on('cursor', (cursor: string) => {
+      if (this.browserClient && this.browserClient.readyState === WebSocket.OPEN) {
+        const cursorMsg = createMessage(MessageType.BROWSER_CURSOR, { cursor });
+        this.browserClient.send(JSON.stringify(cursorMsg));
+      }
+    });
   }
 
   async start(): Promise<void> {
@@ -353,7 +361,8 @@ export class VPWebSocketServer {
       }
 
       case MessageType.BROWSER_FRAME_ACK: {
-        // Accepted but unused in Phase 1
+        const { timestamp } = msg.payload as { timestamp: number };
+        this.browserService.ackFrame(timestamp).catch(() => {});
         break;
       }
     }
