@@ -4,15 +4,6 @@ import * as os from 'node:os';
 import { DEFAULT_PORT } from '@vibepilot/protocol';
 import type { ProjectInfo } from '@vibepilot/protocol';
 
-/** @deprecated Use ProjectInfo from @vibepilot/protocol instead */
-export interface ProjectEntry {
-  id: string;
-  name: string;
-  path: string;
-  favorite?: boolean;
-  addedAt?: number;
-}
-
 export interface VibePilotConfig {
   version: string;
   auth: {
@@ -91,6 +82,7 @@ export class ConfigManager {
   async save(config: VibePilotConfig): Promise<void> {
     await fs.mkdir(this.configDir, { recursive: true });
     await fs.writeFile(this.configPath, JSON.stringify(config, null, 2), 'utf-8');
+    await fs.chmod(this.configPath, 0o600);
   }
 
   async exists(): Promise<boolean> {

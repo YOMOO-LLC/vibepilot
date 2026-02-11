@@ -27,7 +27,7 @@ program
 
 // ── serve command ────────────────────────────────────────────────
 
-program
+const serveCmd = program
   .command('serve')
   .description('Start the VibePilot agent server')
   .option('-p, --port <number>', 'WebSocket server port', String(DEFAULT_PORT))
@@ -44,7 +44,7 @@ program
   .option('--supabase-url <url>', 'Supabase project URL (enables Supabase auth mode)')
   .option('--supabase-key <key>', 'Supabase service role key')
   .option('--owner-id <uuid>', 'Owner user UUID for Supabase agent registration')
-  .action(async (opts) => {
+  .action(async (opts, cmd) => {
     // ── First-run setup wizard ──────────────────────────────────
     const configManager = new ConfigManager();
     if (!(await configManager.exists())) {
@@ -53,21 +53,24 @@ program
     const config = await configManager.load();
 
     // ── Resolve settings: CLI flags > config.json > defaults ────
-    const port = opts.port !== String(DEFAULT_PORT) ? parseInt(opts.port, 10) : config.server.port;
+    // Use getOptionValueSource() for reliable detection of explicit CLI flags
+    const port =
+      cmd.getOptionValueSource('port') === 'cli' ? parseInt(opts.port, 10) : config.server.port;
 
     const cwd =
-      opts.dir !== process.cwd()
+      cmd.getOptionValueSource('dir') === 'cli'
         ? opts.dir
         : config.projects.length > 0
           ? config.projects[0].path
           : process.cwd();
 
     const sessionTimeoutMs =
-      opts.sessionTimeout !== '300'
+      cmd.getOptionValueSource('sessionTimeout') === 'cli'
         ? parseInt(opts.sessionTimeout, 10) * 1000
         : config.server.sessionTimeout * 1000;
 
-    const agentName = opts.agentName !== os.hostname() ? opts.agentName : config.server.agentName;
+    const agentName =
+      cmd.getOptionValueSource('agentName') === 'cli' ? opts.agentName : config.server.agentName;
 
     // ── Determine auth mode ─────────────────────────────────────
     // Backward compatibility: explicit CLI flags / env vars override config
@@ -394,7 +397,7 @@ program
       anonKey = config.selfHosted.anonKey;
     } else {
       // Fallback: use VP_CLOUD_URL env var or default
-      webUrl = process.env.VP_CLOUD_URL || 'https://vibepilot.dev';
+      webUrl = process.env.VP_CLOUD_URL || 'https://vibepilot.cloud';
     }
 
     const deviceServer = new DeviceAuthServer();

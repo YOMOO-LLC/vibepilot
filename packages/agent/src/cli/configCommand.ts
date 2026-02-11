@@ -128,6 +128,9 @@ export async function configAuth(configManager: ConfigManager): Promise<void> {
 
   await configManager.save(config);
   console.log(`Authentication mode set to "${mode}".`);
+  if (mode === 'cloud' || mode === 'self-hosted') {
+    console.log('Run "vibepilot auth:login" to complete authentication.');
+  }
 }
 
 /**
@@ -140,10 +143,20 @@ export async function configServer(configManager: ConfigManager): Promise<void> 
   const portStr = await input({
     message: 'Server port:',
     default: String(config.server.port),
+    validate: (v) => {
+      const n = parseInt(v, 10);
+      if (isNaN(n) || n < 1 || n > 65535) return 'Port must be a number between 1 and 65535';
+      return true;
+    },
   });
   const timeoutStr = await input({
     message: 'Session timeout (seconds):',
     default: String(config.server.sessionTimeout),
+    validate: (v) => {
+      const n = parseInt(v, 10);
+      if (isNaN(n) || n < 0) return 'Timeout must be a non-negative number';
+      return true;
+    },
   });
   const agentName = await input({
     message: 'Agent name:',
