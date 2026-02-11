@@ -81,7 +81,9 @@ export class CredentialManager {
       return creds;
     }
 
-    const response = await fetch(`${creds.supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+    // Validate URL from credentials file before making network request
+    const tokenUrl = new URL('/auth/v1/token?grant_type=refresh_token', creds.supabaseUrl);
+    const response = await fetch(tokenUrl.toString(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

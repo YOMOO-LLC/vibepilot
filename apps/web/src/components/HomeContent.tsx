@@ -59,7 +59,6 @@ export default function HomeContent() {
     selectedAgent,
     showSelector: showAgentSelector,
     loadAgents,
-    selectAgent,
     restoreLastAgent,
   } = useAgentStore();
 

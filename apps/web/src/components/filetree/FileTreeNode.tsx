@@ -10,14 +10,19 @@ interface FileTreeNodeProps {
   level: number;
 }
 
-export function FileTreeNode({ node, expanded, childrenMap, onToggle, onFileClick, level }: FileTreeNodeProps) {
+export function FileTreeNode({
+  node,
+  expanded,
+  childrenMap,
+  onToggle,
+  onFileClick,
+  level,
+}: FileTreeNodeProps) {
   const isDirectory = node.type === 'directory';
   const isExpanded = expanded.has(node.path);
   const children = childrenMap[node.path];
 
-  const iconUrl = isDirectory
-    ? getFolderIconUrl(node.name, isExpanded)
-    : getFileIconUrl(node.name);
+  const iconUrl = isDirectory ? getFolderIconUrl(node.name, isExpanded) : getFileIconUrl(node.name);
 
   const handleClick = () => {
     if (isDirectory) {
@@ -49,8 +54,13 @@ export function FileTreeNode({ node, expanded, childrenMap, onToggle, onFileClic
           </span>
         )}
         {!isDirectory && <span style={{ width: '16px' }} />}
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={iconUrl} alt="" width={16} height={16} style={{ marginRight: '6px', flexShrink: 0 }} />
+        <img
+          src={iconUrl}
+          alt=""
+          width={16}
+          height={16}
+          style={{ marginRight: '6px', flexShrink: 0 }}
+        />
         <span className="truncate">{node.name}</span>
       </div>
 

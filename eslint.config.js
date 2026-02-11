@@ -4,11 +4,11 @@ import tsparser from '@typescript-eslint/parser';
 export default [
   {
     ignores: [
-      'node_modules/**',
-      'dist/**',
-      '.next/**',
-      '.turbo/**',
-      'coverage/**',
+      '**/node_modules/**',
+      '**/dist/**',
+      '**/.next/**',
+      '**/.turbo/**',
+      '**/coverage/**',
       '.worktrees/**',
     ],
   },

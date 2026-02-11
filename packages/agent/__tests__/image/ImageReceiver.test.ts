@@ -3,8 +3,12 @@ import { ImageReceiver } from '../../src/image/ImageReceiver.js';
 
 // Mock fs/promises
 vi.mock('fs/promises', () => ({
-  mkdir: vi.fn(),
+  mkdtemp: vi.fn().mockResolvedValue('/tmp/vp-abc123'),
   writeFile: vi.fn(),
+}));
+
+vi.mock('crypto', () => ({
+  randomUUID: vi.fn().mockReturnValue('550e8400-e29b-41d4-a716-446655440000'),
 }));
 
 describe('ImageReceiver', () => {
@@ -21,10 +25,10 @@ describe('ImageReceiver', () => {
     vi.clearAllMocks();
   });
 
-  it('initializes and creates temp directory', async () => {
+  it('initializes and creates temp directory with mkdtemp', async () => {
     await receiver.init();
 
-    expect(mockFs.mkdir).toHaveBeenCalledWith('/tmp/vp', { recursive: true });
+    expect(mockFs.mkdtemp).toHaveBeenCalledWith(expect.stringMatching(/vp-$/));
   });
 
   it('starts transfer tracking', async () => {
@@ -46,7 +50,7 @@ describe('ImageReceiver', () => {
     expect(() => receiver.addChunk('transfer-1', 2, 'ZGF0YQ==')).not.toThrow();
   });
 
-  it('saves completed file to /tmp/vp/ and returns correct file path', async () => {
+  it('saves completed file with secure permissions and returns correct path', async () => {
     await receiver.init();
     receiver.startTransfer('transfer-1', 'image.png', 50);
 
@@ -56,12 +60,13 @@ describe('ImageReceiver', () => {
     const filePath = await receiver.complete('transfer-1');
 
     expect(mockFs.writeFile).toHaveBeenCalled();
-    expect(filePath).toMatch(/^\/tmp\/vp\/image-\d+\.png$/);
+    expect(filePath).toContain('.png');
 
-    // Verify the writeFile was called with the correct path pattern
+    // Verify the writeFile was called with secure mode
     const writeFileCall = (mockFs.writeFile as any).mock.calls[0];
-    expect(writeFileCall[0]).toMatch(/^\/tmp\/vp\/image-\d+\.png$/);
+    expect(writeFileCall[0]).toContain('.png');
     expect(writeFileCall[1]).toBeInstanceOf(Buffer);
+    expect(writeFileCall[2]).toEqual({ mode: 0o600 });
   });
 
   it('throws error when completing non-existent transfer', async () => {
@@ -92,9 +97,8 @@ describe('ImageReceiver', () => {
     const path1 = await receiver.complete('transfer-1');
     const path2 = await receiver.complete('transfer-2');
 
-    expect(path1).toContain('image1');
-    expect(path2).toContain('image2');
-    expect(path1).not.toBe(path2);
+    expect(path1).toContain('.png');
+    expect(path2).toContain('.jpg');
   });
 
   it('preserves file extension', async () => {
@@ -114,6 +118,7 @@ describe('ImageReceiver', () => {
 
     const filePath = await receiver.complete('transfer-1');
 
-    expect(filePath).toMatch(/^\/tmp\/vp\/imagefile-\d+$/);
+    // UUID-based filename without extension
+    expect(filePath).toMatch(/\/[0-9a-f-]+$/);
   });
 });

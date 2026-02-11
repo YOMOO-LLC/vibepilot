@@ -14,7 +14,6 @@ export function ImagePreview({ tab }: ImagePreviewProps) {
       className="flex items-center justify-center h-full bg-zinc-900 p-4"
       data-testid="image-preview"
     >
-      {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={src}
         alt={tab.fileName}

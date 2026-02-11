@@ -113,7 +113,7 @@ export class SupabaseRegistry implements AgentRegistry {
     path: string,
     init: { method: string; headers?: Record<string, string>; body?: string }
   ): Promise<Response> {
-    const url = `${this.supabaseUrl}${path}`;
+    const validatedUrl = new URL(path, this.supabaseUrl);
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       apikey: this.supabaseKey,
@@ -121,7 +121,7 @@ export class SupabaseRegistry implements AgentRegistry {
       ...init.headers,
     };
 
-    return fetch(url, {
+    return fetch(validatedUrl.toString(), {
       method: init.method,
       headers,
       body: init.body,

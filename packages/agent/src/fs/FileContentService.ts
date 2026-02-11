@@ -113,7 +113,6 @@ export class FileContentService {
   async read(filePath: string): Promise<FileReadResult> {
     this.validatePath(filePath);
     const isImage = FileContentService.isImage(filePath);
-    const stat = await fs.stat(filePath);
 
     if (isImage) {
       const buffer = await fs.readFile(filePath);
@@ -123,7 +122,7 @@ export class FileContentService {
         encoding: 'base64',
         language: '',
         mimeType: FileContentService.getMimeType(filePath),
-        size: stat.size,
+        size: buffer.byteLength,
         readonly: true,
       };
     }
@@ -135,15 +134,14 @@ export class FileContentService {
       encoding: 'utf-8',
       language: FileContentService.getLanguage(filePath),
       mimeType: 'text/plain',
-      size: stat.size,
+      size: Buffer.byteLength(content, 'utf-8'),
       readonly: false,
     };
   }
 
   async write(filePath: string, content: string): Promise<number> {
     this.validatePath(filePath);
-    await fs.writeFile(filePath, content, 'utf-8');
-    const stat = await fs.stat(filePath);
-    return stat.size;
+    await fs.writeFile(filePath, content, { encoding: 'utf-8', mode: 0o644 });
+    return Buffer.byteLength(content, 'utf-8');
   }
 }

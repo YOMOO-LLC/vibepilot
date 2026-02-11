@@ -381,9 +381,15 @@ program
 
     if (config.auth.mode === 'cloud' && config.cloud?.webUrl) {
       webUrl = config.cloud.webUrl;
+      // Validate URL before making network request
+      const parsedUrl = new URL('/api/config', webUrl);
+      if (parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') {
+        console.error(`Invalid cloud URL protocol: ${parsedUrl.protocol}`);
+        process.exit(1);
+      }
       // Fetch supabaseUrl/anonKey from /api/config
       try {
-        const resp = await fetch(`${webUrl}/api/config`);
+        const resp = await fetch(parsedUrl.toString());
         if (!resp.ok) {
           console.error(`Failed to fetch cloud config from ${webUrl}: HTTP ${resp.status}`);
           process.exit(1);
@@ -410,7 +416,8 @@ program
       webUrl = process.env.VP_CLOUD_URL || 'https://vibepilot.cloud';
       // Fetch supabaseUrl/anonKey for the fallback path too
       try {
-        const resp = await fetch(`${webUrl}/api/config`);
+        const fallbackUrl = new URL('/api/config', webUrl);
+        const resp = await fetch(fallbackUrl.toString());
         if (resp.ok) {
           const cloudConfig = (await resp.json()) as { supabaseUrl: string; anonKey: string };
           supabaseUrl = cloudConfig.supabaseUrl;

@@ -1,5 +1,7 @@
-import { mkdir, writeFile } from 'fs/promises';
+import { mkdtemp, writeFile } from 'fs/promises';
 import { join } from 'path';
+import { randomUUID } from 'crypto';
+import { tmpdir } from 'os';
 
 interface TransferState {
   filename: string;
@@ -9,10 +11,10 @@ interface TransferState {
 
 export class ImageReceiver {
   private transfers = new Map<string, TransferState>();
-  private tempDir = '/tmp/vp';
+  private tempDir: string | null = null;
 
   async init(): Promise<void> {
-    await mkdir(this.tempDir, { recursive: true });
+    this.tempDir = await mkdtemp(join(tmpdir(), 'vp-'));
   }
 
   startTransfer(transferId: string, filename: string, totalSize: number): void {
@@ -46,16 +48,14 @@ export class ImageReceiver {
     const base64Data = sortedChunks.join('');
     const buffer = Buffer.from(base64Data, 'base64');
 
-    // Generate unique filename with timestamp
-    const timestamp = Date.now();
-    const nameWithoutExt = transfer.filename.replace(/\.[^.]+$/, '');
+    // Generate unique filename with cryptographic randomness
     const ext = transfer.filename.includes('.')
       ? transfer.filename.substring(transfer.filename.lastIndexOf('.'))
       : '';
-    const uniqueFilename = `${nameWithoutExt}-${timestamp}${ext}`;
-    const filePath = join(this.tempDir, uniqueFilename);
+    const uniqueFilename = `${randomUUID()}${ext}`;
+    const filePath = join(this.tempDir!, uniqueFilename);
 
-    await writeFile(filePath, buffer);
+    await writeFile(filePath, buffer, { mode: 0o600 });
 
     // Cleanup transfer state
     this.transfers.delete(transferId);
