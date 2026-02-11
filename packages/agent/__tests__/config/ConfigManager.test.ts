@@ -41,9 +41,6 @@ describe('ConfigManager', () => {
     await nestedManager.save(config);
 
     const filePath = path.join(nestedDir, 'config.json');
-    const stat = await fs.stat(filePath);
-    expect(stat.isFile()).toBe(true);
-
     const content = await fs.readFile(filePath, 'utf-8');
     const parsed = JSON.parse(content);
     expect(parsed.version).toBe('0.1.0');

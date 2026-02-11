@@ -27,7 +27,7 @@ program
 
 // ── serve command ────────────────────────────────────────────────
 
-const serveCmd = program
+program
   .command('serve')
   .description('Start the VibePilot agent server')
   .option('-p, --port <number>', 'WebSocket server port', String(DEFAULT_PORT))
