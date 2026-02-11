@@ -40,6 +40,7 @@ import { ProjectManager } from '../config/ProjectManager.js';
 import { FileContentService } from '../fs/FileContentService.js';
 import { ImageReceiver } from '../image/ImageReceiver.js';
 import { BrowserService } from '../browser/BrowserService.js';
+import { McpConfigManager } from '../browser/McpConfigManager.js';
 
 export interface VPWebSocketServerOptions {
   port: number;
@@ -81,6 +82,7 @@ export class VPWebSocketServer {
   private imageSessionMap = new Map<string, string>(); // transferId → sessionId
   private browserService: BrowserService;
   private browserClient: WebSocket | null = null;
+  private mcpConfigManager: McpConfigManager | null = null;
   private authProvider?: AuthProvider;
 
   constructor(options: VPWebSocketServerOptions) {
@@ -110,6 +112,11 @@ export class VPWebSocketServer {
         const cursorMsg = createMessage(MessageType.BROWSER_CURSOR, { cursor });
         this.browserClient.send(JSON.stringify(cursorMsg));
       }
+    });
+
+    // Clean up env/MCP config when browser shuts down due to idle timeout
+    this.browserService.on('idle-shutdown', async () => {
+      await this.cleanupBrowserEnv();
     });
   }
 
@@ -151,6 +158,7 @@ export class VPWebSocketServer {
     this.sessionPersistence.destroyAll();
     this.ptyManager.destroyAll();
     await this.browserService.stop();
+    await this.cleanupBrowserEnv();
     await this.fileWatcher.stop();
 
     return new Promise((resolve) => {
@@ -174,6 +182,29 @@ export class VPWebSocketServer {
         }
       });
     });
+  }
+
+  private async setupBrowserEnv(cdpPort: number): Promise<void> {
+    const cdpUrl = `http://127.0.0.1:${cdpPort}`;
+    process.env.CHROME_CDP_URL = cdpUrl;
+    process.env.BROWSER_PREVIEW_PORT = String(cdpPort);
+    process.env.PLAYWRIGHT_CDP_ENDPOINT = cdpUrl;
+
+    const projectPath = this.projectManager.getCurrentProject()?.path ?? this.cwd;
+    this.mcpConfigManager = new McpConfigManager(projectPath);
+    await this.mcpConfigManager.write(cdpUrl);
+  }
+
+  private async cleanupBrowserEnv(): Promise<void> {
+    delete process.env.CHROME_CDP_URL;
+    delete process.env.BROWSER_PREVIEW_PORT;
+    delete process.env.PLAYWRIGHT_CDP_ENDPOINT;
+    if (this.mcpConfigManager) {
+      await this.mcpConfigManager.clean().catch((err) => {
+        console.error('Failed to clean MCP config:', err);
+      });
+      this.mcpConfigManager = null;
+    }
   }
 
   private async handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
@@ -230,6 +261,23 @@ export class VPWebSocketServer {
       this.handleDisconnect(state);
       this.clients.delete(ws);
     });
+
+    // Eagerly start Chrome and write MCP config so Claude Code discovers servers on launch
+    this.ensureBrowserAndConfig().catch((err) => {
+      console.error('Failed to start browser on connection:', err);
+    });
+  }
+
+  private async ensureBrowserAndConfig(): Promise<void> {
+    if (!this.browserService.isRunning()) {
+      const projectId = this.projectManager.getCurrentProject()?.id ?? 'default';
+      await this.browserService.start(projectId);
+    }
+    // Always (re-)write MCP config — may have been cleaned on previous disconnect
+    const cdpPort = this.browserService.getCdpPort();
+    if (cdpPort) {
+      await this.setupBrowserEnv(cdpPort);
+    }
   }
 
   private async handleMessage(ws: WebSocket, state: ClientState, msg: VPMessage): Promise<void> {
@@ -298,9 +346,25 @@ export class VPWebSocketServer {
       case MessageType.BROWSER_START: {
         const payload = msg.payload as BrowserStartPayload;
         this.browserClient = ws;
+
+        // Chrome is normally already running (started on connection).
+        // Attach screencast for the Preview panel.
+        if (this.browserService.isRunning()) {
+          await this.browserService.attachPreview();
+          const response = createMessage(MessageType.BROWSER_STARTED, {
+            cdpPort: this.browserService.getCdpPort()!,
+            viewportWidth: payload.width ?? 1280,
+            viewportHeight: payload.height ?? 720,
+          });
+          ws.send(JSON.stringify(response));
+          break;
+        }
+
+        // Fallback: Chrome not yet ready (race with ensureBrowserAndConfig), start now
         try {
           const projectId = this.projectManager.getCurrentProject()?.id ?? 'default';
           const info = await this.browserService.start(projectId, payload);
+          await this.setupBrowserEnv(info.cdpPort);
           const response = createMessage(MessageType.BROWSER_STARTED, {
             cdpPort: info.cdpPort,
             viewportWidth: info.viewportWidth,
@@ -321,6 +385,7 @@ export class VPWebSocketServer {
 
       case MessageType.BROWSER_STOP: {
         await this.browserService.stop();
+        await this.cleanupBrowserEnv();
         this.browserClient = null;
         const response = createMessage(MessageType.BROWSER_STOPPED, {});
         ws.send(JSON.stringify(response));
@@ -592,10 +657,18 @@ export class VPWebSocketServer {
   }
 
   private handleDisconnect(state: ClientState): void {
-    // Clean up browser if this client started it
+    // Detach browser preview (starts idle timer) instead of killing Chrome immediately
     if (this.browserClient === state.ws) {
-      this.browserService.stop().catch(() => {});
+      this.browserService.detachPreview();
       this.browserClient = null;
+    }
+
+    // Clean MCP config when the last client disconnects
+    // (this.clients still contains the disconnecting client at this point)
+    if (this.clients.size <= 1) {
+      this.cleanupBrowserEnv().catch((err) => {
+        console.error('Failed to clean browser env on disconnect:', err);
+      });
     }
 
     for (const sessionId of state.sessionIds) {

@@ -28,13 +28,52 @@ export class BrowserService extends EventEmitter {
   private cdpPort: number | null = null;
   private viewportWidth = 1280;
   private viewportHeight = 720;
+  private idleTimer: ReturnType<typeof setTimeout> | null = null;
+  private idleTimeoutMs: number;
+  private startPromise: Promise<BrowserInfo> | null = null;
 
-  constructor(profileBasePath: string) {
+  constructor(profileBasePath: string, options?: { idleTimeoutMs?: number }) {
     super();
     this.profileManager = new BrowserProfileManager(profileBasePath);
+    this.idleTimeoutMs = options?.idleTimeoutMs ?? 10 * 60 * 1000; // 10 min
+  }
+
+  isRunning(): boolean {
+    return this.chromeProcess !== null;
+  }
+
+  getCdpPort(): number | null {
+    return this.cdpPort;
+  }
+
+  getCdpUrl(): string | null {
+    return this.cdpPort ? `http://127.0.0.1:${this.cdpPort}` : null;
   }
 
   async start(projectId: string, options?: BrowserStartPayload): Promise<BrowserInfo> {
+    // Already running — return existing info
+    if (this.isRunning() && this.cdpPort) {
+      return {
+        cdpPort: this.cdpPort,
+        viewportWidth: this.viewportWidth,
+        viewportHeight: this.viewportHeight,
+      };
+    }
+
+    // Concurrent start guard — coalesce into single launch
+    if (this.startPromise) {
+      return this.startPromise;
+    }
+
+    this.startPromise = this.doStart(projectId, options);
+    try {
+      return await this.startPromise;
+    } finally {
+      this.startPromise = null;
+    }
+  }
+
+  private async doStart(projectId: string, options?: BrowserStartPayload): Promise<BrowserInfo> {
     const chromePath = await ChromeDetector.detect();
     if (!chromePath) {
       throw new Error('Chrome not found');
@@ -117,7 +156,31 @@ export class BrowserService extends EventEmitter {
     return { cdpPort: port, viewportWidth: width, viewportHeight: height };
   }
 
+  detachPreview(): void {
+    this.screencast?.stop();
+    this.clearIdleTimer();
+    this.idleTimer = setTimeout(async () => {
+      this.emit('idle-shutdown');
+      await this.stop();
+    }, this.idleTimeoutMs);
+  }
+
+  async attachPreview(): Promise<void> {
+    this.clearIdleTimer();
+    if (this.screencast && this.isRunning()) {
+      await this.screencast.start({ maxWidth: this.viewportWidth, maxHeight: this.viewportHeight });
+    }
+  }
+
+  private clearIdleTimer(): void {
+    if (this.idleTimer) {
+      clearTimeout(this.idleTimer);
+      this.idleTimer = null;
+    }
+  }
+
   async stop(): Promise<void> {
+    this.clearIdleTimer();
     if (this.screencast) {
       await this.screencast.stop();
       this.screencast = null;
