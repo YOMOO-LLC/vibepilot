@@ -5,6 +5,7 @@ import { VPWebSocketServer } from '../src/transport/WebSocketServer.js';
 import { DEFAULT_PORT } from '@vibepilot/protocol';
 import { logger } from '../src/utils/logger.js';
 import { ProjectManager } from '../src/config/ProjectManager.js';
+import { ConfigManager } from '../src/config/ConfigManager.js';
 import { TokenAuthProvider } from '../src/auth/TokenAuthProvider.js';
 import { SupabaseAuthProvider } from '../src/auth/SupabaseAuthProvider.js';
 import { CredentialManager } from '../src/auth/CredentialManager.js';
@@ -12,6 +13,8 @@ import { DeviceAuthServer } from '../src/auth/DeviceAuthServer.js';
 import { FileSystemRegistry } from '../src/registry/FileSystemRegistry.js';
 import { SupabaseRegistry } from '../src/registry/SupabaseRegistry.js';
 import { SupabaseUserRegistry } from '../src/registry/SupabaseUserRegistry.js';
+import { runSetupWizard } from '../src/cli/setupWizard.js';
+import { configMain, configAuth, configServer, configProjects } from '../src/cli/configCommand.js';
 import type { AuthProvider } from '../src/auth/AuthProvider.js';
 import type { AgentRegistry } from '../src/registry/AgentRegistry.js';
 
@@ -21,6 +24,8 @@ program
   .name('vibepilot')
   .description('VibePilot Agent - local development bridge')
   .version('0.1.0');
+
+// ── serve command ────────────────────────────────────────────────
 
 program
   .command('serve')
@@ -40,32 +45,89 @@ program
   .option('--supabase-key <key>', 'Supabase service role key')
   .option('--owner-id <uuid>', 'Owner user UUID for Supabase agent registration')
   .action(async (opts) => {
-    const port = parseInt(opts.port, 10);
-    const cwd = opts.dir;
-    const sessionTimeoutMs = parseInt(opts.sessionTimeout, 10) * 1000;
+    // ── First-run setup wizard ──────────────────────────────────
+    const configManager = new ConfigManager();
+    if (!(await configManager.exists())) {
+      await runSetupWizard(configManager);
+    }
+    const config = await configManager.load();
 
-    // Determine auth mode: supabase > token > none
+    // ── Resolve settings: CLI flags > config.json > defaults ────
+    const port = opts.port !== String(DEFAULT_PORT) ? parseInt(opts.port, 10) : config.server.port;
+
+    const cwd =
+      opts.dir !== process.cwd()
+        ? opts.dir
+        : config.projects.length > 0
+          ? config.projects[0].path
+          : process.cwd();
+
+    const sessionTimeoutMs =
+      opts.sessionTimeout !== '300'
+        ? parseInt(opts.sessionTimeout, 10) * 1000
+        : config.server.sessionTimeout * 1000;
+
+    const agentName = opts.agentName !== os.hostname() ? opts.agentName : config.server.agentName;
+
+    // ── Determine auth mode ─────────────────────────────────────
+    // Backward compatibility: explicit CLI flags / env vars override config
     const supabaseUrl = opts.supabaseUrl || process.env.VP_SUPABASE_URL;
     const supabaseKey = opts.supabaseKey || process.env.VP_SUPABASE_KEY;
 
     // Initialize auth provider
     let authProvider: AuthProvider | undefined;
+
     if (supabaseUrl) {
+      // Explicit Supabase URL from CLI flag or env var
       authProvider = new SupabaseAuthProvider(supabaseUrl);
       logger.info('Supabase authentication enabled');
-    } else {
+    } else if (opts.token || process.env.VP_TOKEN) {
+      // Explicit token from CLI flag or env var
       const token = opts.token || process.env.VP_TOKEN;
-      if (token) {
-        authProvider = new TokenAuthProvider(token);
-        logger.info('Token authentication enabled');
+      authProvider = new TokenAuthProvider(token);
+      logger.info('Token authentication enabled');
+    } else {
+      // Use config-based auth mode
+      switch (config.auth.mode) {
+        case 'cloud':
+        case 'self-hosted': {
+          const credManager = new CredentialManager();
+          const creds = await credManager.load();
+          if (creds) {
+            try {
+              const refreshed = await credManager.refreshIfNeeded(creds);
+              if (refreshed !== creds) {
+                await credManager.save(refreshed);
+              }
+              authProvider = new SupabaseAuthProvider(refreshed.supabaseUrl);
+              logger.info('Supabase authentication enabled (from stored credentials)');
+            } catch (err: any) {
+              logger.error(
+                { err: err.message },
+                'Failed to use stored credentials. Run "vibepilot auth:login" to re-authenticate.'
+              );
+            }
+          }
+          break;
+        }
+        case 'token': {
+          if (config.token) {
+            authProvider = new TokenAuthProvider(config.token);
+            logger.info('Token authentication enabled (from config)');
+          }
+          break;
+        }
+        case 'none':
+        default:
+          // No auth
+          break;
       }
     }
 
-    // Initialize agent registry
+    // ── Initialize agent registry ───────────────────────────────
     let registry: AgentRegistry | undefined;
     let registeredAgentId: string | undefined;
     const publicUrl = opts.publicUrl || process.env.VP_PUBLIC_URL;
-    const agentName = opts.agentName || process.env.VP_AGENT_NAME || os.hostname();
 
     if (supabaseUrl && supabaseKey) {
       // Supabase registry mode (explicit service_role key)
@@ -88,7 +150,7 @@ program
       registeredAgentId = agentInfo.id;
       logger.info({ agentId: agentInfo.id, name: agentInfo.name }, 'Agent registered (Supabase)');
     } else if (!supabaseUrl && !supabaseKey) {
-      // No explicit Supabase flags — try stored credentials from `vibepilot auth login`
+      // No explicit Supabase flags — try stored credentials
       const credManager = new CredentialManager();
       const creds = await credManager.load();
 
@@ -98,10 +160,6 @@ program
           if (refreshed !== creds) {
             await credManager.save(refreshed);
           }
-
-          // Set up Supabase auth provider from stored credentials
-          authProvider = new SupabaseAuthProvider(refreshed.supabaseUrl);
-          logger.info('Supabase authentication enabled (from stored credentials)');
 
           // Use SupabaseUserRegistry (user JWT, no service_role key needed)
           registry = new SupabaseUserRegistry(
@@ -126,7 +184,7 @@ program
         } catch (err: any) {
           logger.error(
             { err: err.message },
-            'Failed to use stored credentials. Run "vibepilot auth login" to re-authenticate.'
+            'Failed to use stored credentials. Run "vibepilot auth:login" to re-authenticate.'
           );
         }
       } else {
@@ -207,12 +265,7 @@ program
     process.on('SIGTERM', shutdown);
   });
 
-program
-  .command('init')
-  .description('Initialize VibePilot in the current project')
-  .action(() => {
-    logger.info({ cwd: process.cwd() }, 'VibePilot initialized');
-  });
+// ── project commands ─────────────────────────────────────────────
 
 program
   .command('project:add')
@@ -233,11 +286,11 @@ program
         tags: opts.tags ? opts.tags.split(',').map((t: string) => t.trim()) : undefined,
       });
 
-      console.log(`✅ Project "${name}" added successfully`);
+      console.log(`Project "${name}" added successfully`);
       console.log(`   ID: ${project.id}`);
       console.log(`   Path: ${project.path}`);
     } catch (err: any) {
-      console.error(`❌ Failed to add project: ${err.message}`);
+      console.error(`Failed to add project: ${err.message}`);
       process.exit(1);
     }
   });
@@ -259,7 +312,7 @@ program
         console.log('  (none)');
       } else {
         projects.forEach((p) => {
-          const star = p.favorite ? '★' : ' ';
+          const star = p.favorite ? '*' : ' ';
           const id = p.id.slice(0, 8);
           console.log(`  ${star} ${p.name} [${id}]`);
           console.log(`     ${p.path}`);
@@ -285,44 +338,67 @@ program
     const project = projects.find((p) => p.id === projectId || p.id.startsWith(projectId));
 
     if (!project) {
-      console.error(`❌ Project not found: ${projectId}`);
+      console.error(`Project not found: ${projectId}`);
       process.exit(1);
     }
 
     try {
       await manager.removeProject(project.id);
-      console.log(`✅ Project "${project.name}" removed successfully`);
+      console.log(`Project "${project.name}" removed successfully`);
     } catch (err: any) {
-      console.error(`❌ Failed to remove project: ${err.message}`);
+      console.error(`Failed to remove project: ${err.message}`);
       process.exit(1);
     }
   });
 
-// ── auth command group ───────────────────────────────────────────
-const auth = program.command('auth').description('Manage VibePilot Cloud authentication');
+// ── auth commands (colon-style) ──────────────────────────────────
 
-auth
-  .command('login')
-  .description('Authenticate with VibePilot Cloud via browser')
-  .option(
-    '--cloud-url <url>',
-    'Cloud frontend URL',
-    process.env.VP_CLOUD_URL || 'https://vibepilot.dev'
-  )
+program
+  .command('auth:login')
+  .description('Authenticate with VibePilot Cloud')
   .option('--no-browser', 'Do not auto-open the browser')
   .action(async (opts) => {
+    const configManager = new ConfigManager();
+    const config = await configManager.load();
+
     const credManager = new CredentialManager();
     const existing = await credManager.load();
 
     if (existing) {
       console.log(
-        `Already logged in as ${existing.email || existing.userId}. Run "vibepilot auth logout" first.`
+        `Already logged in as ${existing.email || existing.userId}. Run "vibepilot auth:logout" first.`
       );
       return;
     }
 
+    // Determine webUrl based on auth mode
+    let webUrl: string;
+    let supabaseUrl: string | undefined;
+    let anonKey: string | undefined;
+
+    if (config.auth.mode === 'cloud' && config.cloud?.webUrl) {
+      webUrl = config.cloud.webUrl;
+      // Fetch supabaseUrl/anonKey from /api/config
+      try {
+        const resp = await fetch(`${webUrl}/api/config`);
+        const cloudConfig = (await resp.json()) as { supabaseUrl: string; anonKey: string };
+        supabaseUrl = cloudConfig.supabaseUrl;
+        anonKey = cloudConfig.anonKey;
+      } catch (err: any) {
+        console.error(`Failed to fetch cloud config from ${webUrl}: ${err.message}`);
+        process.exit(1);
+      }
+    } else if (config.auth.mode === 'self-hosted' && config.selfHosted) {
+      webUrl = config.selfHosted.webUrl;
+      supabaseUrl = config.selfHosted.supabaseUrl;
+      anonKey = config.selfHosted.anonKey;
+    } else {
+      // Fallback: use VP_CLOUD_URL env var or default
+      webUrl = process.env.VP_CLOUD_URL || 'https://vibepilot.dev';
+    }
+
     const deviceServer = new DeviceAuthServer();
-    const { authUrl } = await deviceServer.start(opts.cloudUrl);
+    const { authUrl } = await deviceServer.start(webUrl);
 
     console.log(`\nOpen this URL in your browser to authenticate:\n  ${authUrl}\n`);
 
@@ -360,8 +436,8 @@ auth
     }
   });
 
-auth
-  .command('logout')
+program
+  .command('auth:logout')
   .description('Remove stored credentials')
   .action(async () => {
     const credManager = new CredentialManager();
@@ -376,15 +452,15 @@ auth
     console.log('Logged out successfully. Credentials removed.');
   });
 
-auth
-  .command('status')
+program
+  .command('auth:status')
   .description('Show current authentication status')
   .action(async () => {
     const credManager = new CredentialManager();
     const creds = await credManager.load();
 
     if (!creds) {
-      console.log('Not logged in. Run "vibepilot auth login" to authenticate.');
+      console.log('Not logged in. Run "vibepilot auth:login" to authenticate.');
       return;
     }
 
@@ -399,6 +475,40 @@ auth
       `  Token:    ${expired ? 'EXPIRED' : `expires in ${Math.round(expiresIn / 60)} min`}`
     );
     console.log();
+  });
+
+// ── config commands ──────────────────────────────────────────────
+
+program
+  .command('config')
+  .description('Interactive configuration')
+  .action(async () => {
+    const configManager = new ConfigManager();
+    await configMain(configManager);
+  });
+
+program
+  .command('config:auth')
+  .description('Configure authentication')
+  .action(async () => {
+    const configManager = new ConfigManager();
+    await configAuth(configManager);
+  });
+
+program
+  .command('config:server')
+  .description('Configure server settings')
+  .action(async () => {
+    const configManager = new ConfigManager();
+    await configServer(configManager);
+  });
+
+program
+  .command('config:projects')
+  .description('Manage projects')
+  .action(async () => {
+    const configManager = new ConfigManager();
+    await configProjects(configManager);
   });
 
 export { program };

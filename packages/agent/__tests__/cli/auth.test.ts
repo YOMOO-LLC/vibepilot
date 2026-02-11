@@ -18,7 +18,7 @@ const { mockOpen } = vi.hoisted(() => ({
 }));
 vi.mock('open', () => ({ default: mockOpen }));
 
-const { mockCredManager, mockDeviceServer } = vi.hoisted(() => {
+const { mockCredManager, mockDeviceServer, mockConfigManager } = vi.hoisted(() => {
   const mockCredManager = {
     load: vi.fn(),
     save: vi.fn(),
@@ -30,15 +30,23 @@ const { mockCredManager, mockDeviceServer } = vi.hoisted(() => {
     waitForCallback: vi.fn(),
     close: vi.fn(),
   };
-  return { mockCredManager, mockDeviceServer };
+  const mockConfigManager = {
+    load: vi.fn(),
+    save: vi.fn(),
+    exists: vi.fn(),
+    getDefault: vi.fn(),
+  };
+  return { mockCredManager, mockDeviceServer, mockConfigManager };
 });
 
-const { MockCredentialManagerClass, MockDeviceAuthServerClass } = vi.hoisted(() => {
-  const MockCredentialManagerClass = vi.fn();
-  MockCredentialManagerClass.extractUserId = vi.fn().mockReturnValue('uuid-user-123');
-  const MockDeviceAuthServerClass = vi.fn();
-  return { MockCredentialManagerClass, MockDeviceAuthServerClass };
-});
+const { MockCredentialManagerClass, MockDeviceAuthServerClass, MockConfigManagerClass } =
+  vi.hoisted(() => {
+    const MockCredentialManagerClass = vi.fn();
+    MockCredentialManagerClass.extractUserId = vi.fn().mockReturnValue('uuid-user-123');
+    const MockDeviceAuthServerClass = vi.fn();
+    const MockConfigManagerClass = vi.fn();
+    return { MockCredentialManagerClass, MockDeviceAuthServerClass, MockConfigManagerClass };
+  });
 
 vi.mock('../../src/auth/CredentialManager.js', () => ({
   CredentialManager: MockCredentialManagerClass,
@@ -48,8 +56,23 @@ vi.mock('../../src/auth/DeviceAuthServer.js', () => ({
   DeviceAuthServer: MockDeviceAuthServerClass,
 }));
 
+vi.mock('../../src/config/ConfigManager.js', () => ({
+  ConfigManager: MockConfigManagerClass,
+}));
+
 vi.mock('jose', () => ({
   decodeJwt: vi.fn().mockReturnValue({ sub: 'uuid-user-123' }),
+}));
+
+vi.mock('../../src/cli/setupWizard.js', () => ({
+  runSetupWizard: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../../src/cli/configCommand.js', () => ({
+  configMain: vi.fn().mockResolvedValue(undefined),
+  configAuth: vi.fn().mockResolvedValue(undefined),
+  configServer: vi.fn().mockResolvedValue(undefined),
+  configProjects: vi.fn().mockResolvedValue(undefined),
 }));
 
 import { program } from '../../bin/vibepilot.js';
@@ -65,6 +88,15 @@ describe('CLI auth commands', () => {
     MockCredentialManagerClass.mockImplementation(() => mockCredManager);
     MockCredentialManagerClass.extractUserId = vi.fn().mockReturnValue('uuid-user-123');
     MockDeviceAuthServerClass.mockImplementation(() => mockDeviceServer);
+    MockConfigManagerClass.mockImplementation(() => mockConfigManager);
+
+    // Default config: cloud mode with webUrl configured
+    mockConfigManager.load.mockResolvedValue({
+      version: '0.1.0',
+      auth: { mode: 'none' },
+      server: { port: 9800, sessionTimeout: 300, agentName: 'test' },
+      projects: [],
+    });
 
     consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -75,19 +107,19 @@ describe('CLI auth commands', () => {
     vi.restoreAllMocks();
   });
 
-  describe('auth command group', () => {
-    it('has auth command with login, logout, status subcommands', () => {
-      const authCmd = program.commands.find((c) => c.name() === 'auth');
-      expect(authCmd).toBeDefined();
+  describe('auth commands (colon-style)', () => {
+    it('has auth:login, auth:logout, auth:status commands', () => {
+      const loginCmd = program.commands.find((c) => c.name() === 'auth:login');
+      const logoutCmd = program.commands.find((c) => c.name() === 'auth:logout');
+      const statusCmd = program.commands.find((c) => c.name() === 'auth:status');
 
-      const subcommands = authCmd!.commands.map((c) => c.name());
-      expect(subcommands).toContain('login');
-      expect(subcommands).toContain('logout');
-      expect(subcommands).toContain('status');
+      expect(loginCmd).toBeDefined();
+      expect(logoutCmd).toBeDefined();
+      expect(statusCmd).toBeDefined();
     });
   });
 
-  describe('auth login', () => {
+  describe('auth:login', () => {
     it('starts device auth server and opens browser', async () => {
       mockCredManager.load.mockResolvedValue(null);
       mockDeviceServer.start.mockResolvedValue({
@@ -105,7 +137,7 @@ describe('CLI auth commands', () => {
       mockDeviceServer.close.mockResolvedValue(undefined);
       mockCredManager.save.mockResolvedValue(undefined);
 
-      await program.parseAsync(['node', 'vibepilot', 'auth', 'login']);
+      await program.parseAsync(['node', 'vibepilot', 'auth:login']);
 
       expect(mockDeviceServer.start).toHaveBeenCalled();
       expect(mockOpen).toHaveBeenCalledWith(
@@ -121,19 +153,19 @@ describe('CLI auth commands', () => {
         userId: 'uuid-123',
       });
 
-      await program.parseAsync(['node', 'vibepilot', 'auth', 'login']);
+      await program.parseAsync(['node', 'vibepilot', 'auth:login']);
 
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Already logged in'));
       expect(mockDeviceServer.start).not.toHaveBeenCalled();
     });
   });
 
-  describe('auth logout', () => {
+  describe('auth:logout', () => {
     it('clears credentials and prints success', async () => {
       mockCredManager.load.mockResolvedValue({ email: 'user@example.com' });
       mockCredManager.clear.mockResolvedValue(undefined);
 
-      await program.parseAsync(['node', 'vibepilot', 'auth', 'logout']);
+      await program.parseAsync(['node', 'vibepilot', 'auth:logout']);
 
       expect(mockCredManager.clear).toHaveBeenCalled();
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Logged out'));
@@ -142,13 +174,13 @@ describe('CLI auth commands', () => {
     it('prints message when not logged in', async () => {
       mockCredManager.load.mockResolvedValue(null);
 
-      await program.parseAsync(['node', 'vibepilot', 'auth', 'logout']);
+      await program.parseAsync(['node', 'vibepilot', 'auth:logout']);
 
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Not logged in'));
     });
   });
 
-  describe('auth status', () => {
+  describe('auth:status', () => {
     it('shows user info when logged in', async () => {
       mockCredManager.load.mockResolvedValue({
         email: 'user@example.com',
@@ -157,7 +189,7 @@ describe('CLI auth commands', () => {
         supabaseUrl: 'https://xyz.supabase.co',
       });
 
-      await program.parseAsync(['node', 'vibepilot', 'auth', 'status']);
+      await program.parseAsync(['node', 'vibepilot', 'auth:status']);
 
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('user@example.com'));
     });
@@ -165,7 +197,7 @@ describe('CLI auth commands', () => {
     it('shows not logged in when no credentials', async () => {
       mockCredManager.load.mockResolvedValue(null);
 
-      await program.parseAsync(['node', 'vibepilot', 'auth', 'status']);
+      await program.parseAsync(['node', 'vibepilot', 'auth:status']);
 
       expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Not logged in'));
     });

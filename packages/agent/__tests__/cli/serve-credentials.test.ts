@@ -9,6 +9,8 @@ const {
   MockSupabaseRegistryClass,
   mockSupabaseUserRegister,
   mockSupabaseRegister,
+  mockConfigManager,
+  MockConfigManagerClass,
 } = vi.hoisted(() => {
   const MockWSServer = vi.fn();
   const mockCredManager = {
@@ -23,6 +25,13 @@ const {
   const MockSupabaseUserRegistryClass = vi.fn();
   const mockSupabaseRegister = vi.fn();
   const MockSupabaseRegistryClass = vi.fn();
+  const mockConfigManager = {
+    load: vi.fn(),
+    save: vi.fn(),
+    exists: vi.fn(),
+    getDefault: vi.fn(),
+  };
+  const MockConfigManagerClass = vi.fn();
   return {
     MockWSServer,
     mockCredManager,
@@ -31,6 +40,8 @@ const {
     MockSupabaseRegistryClass,
     mockSupabaseUserRegister,
     mockSupabaseRegister,
+    mockConfigManager,
+    MockConfigManagerClass,
   };
 });
 
@@ -59,6 +70,21 @@ vi.mock('../../src/registry/SupabaseRegistry.js', () => ({
   SupabaseRegistry: MockSupabaseRegistryClass,
 }));
 
+vi.mock('../../src/config/ConfigManager.js', () => ({
+  ConfigManager: MockConfigManagerClass,
+}));
+
+vi.mock('../../src/cli/setupWizard.js', () => ({
+  runSetupWizard: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../../src/cli/configCommand.js', () => ({
+  configMain: vi.fn().mockResolvedValue(undefined),
+  configAuth: vi.fn().mockResolvedValue(undefined),
+  configServer: vi.fn().mockResolvedValue(undefined),
+  configProjects: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('jose', () => ({
   decodeJwt: vi.fn().mockReturnValue({ sub: 'uuid-user-123' }),
   createRemoteJWKSet: vi.fn(),
@@ -78,6 +104,17 @@ describe('serve with stored credentials', () => {
     }));
     MockCredentialManagerClass.mockImplementation(() => mockCredManager);
     MockCredentialManagerClass.extractUserId = vi.fn().mockReturnValue('uuid-user-123');
+    MockConfigManagerClass.mockImplementation(() => mockConfigManager);
+
+    // Default: config file exists, auth mode 'none'
+    mockConfigManager.exists.mockResolvedValue(true);
+    mockConfigManager.load.mockResolvedValue({
+      version: '0.1.0',
+      auth: { mode: 'none' },
+      server: { port: 9800, sessionTimeout: 300, agentName: 'test-host' },
+      projects: [],
+    });
+
     MockSupabaseUserRegistryClass.mockImplementation(() => ({
       register: mockSupabaseUserRegister.mockResolvedValue({
         id: 'agent-001',
