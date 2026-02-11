@@ -15,6 +15,16 @@ export class CursorProbe {
    * Returns the CSS cursor string if it changed, or null if unchanged (dedup).
    */
   async probe(x: number, y: number): Promise<string | null> {
+    // Validate inputs are finite numbers to prevent JS injection
+    if (
+      typeof x !== 'number' ||
+      !Number.isFinite(x) ||
+      typeof y !== 'number' ||
+      !Number.isFinite(y)
+    ) {
+      return null;
+    }
+
     let cursor: string;
     try {
       const { result } = await this.runtime.evaluate({

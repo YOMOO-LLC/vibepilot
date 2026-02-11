@@ -384,7 +384,17 @@ program
       // Fetch supabaseUrl/anonKey from /api/config
       try {
         const resp = await fetch(`${webUrl}/api/config`);
+        if (!resp.ok) {
+          console.error(`Failed to fetch cloud config from ${webUrl}: HTTP ${resp.status}`);
+          process.exit(1);
+        }
         const cloudConfig = (await resp.json()) as { supabaseUrl: string; anonKey: string };
+        if (!cloudConfig.supabaseUrl || !cloudConfig.anonKey) {
+          console.error(
+            `Invalid cloud config response from ${webUrl}: missing supabaseUrl or anonKey`
+          );
+          process.exit(1);
+        }
         supabaseUrl = cloudConfig.supabaseUrl;
         anonKey = cloudConfig.anonKey;
       } catch (err: any) {
@@ -398,6 +408,17 @@ program
     } else {
       // Fallback: use VP_CLOUD_URL env var or default
       webUrl = process.env.VP_CLOUD_URL || 'https://vibepilot.cloud';
+      // Fetch supabaseUrl/anonKey for the fallback path too
+      try {
+        const resp = await fetch(`${webUrl}/api/config`);
+        if (resp.ok) {
+          const cloudConfig = (await resp.json()) as { supabaseUrl: string; anonKey: string };
+          supabaseUrl = cloudConfig.supabaseUrl;
+          anonKey = cloudConfig.anonKey;
+        }
+      } catch {
+        // Non-fatal: credentials callback may still provide these
+      }
     }
 
     const deviceServer = new DeviceAuthServer();
@@ -416,12 +437,23 @@ program
     try {
       const result = await deviceServer.waitForCallback();
 
+      // Use pre-fetched values or fall back to callback result
+      const finalSupabaseUrl = supabaseUrl || result.supabaseUrl;
+      const finalAnonKey = anonKey || result.anonKey;
+
+      if (!finalSupabaseUrl || !finalAnonKey) {
+        console.error(
+          'Authentication succeeded but Supabase configuration is missing. Please configure auth mode first with "vibepilot config:auth".'
+        );
+        process.exit(1);
+      }
+
       const userId = CredentialManager.extractUserId(result.accessToken);
 
       await credManager.save({
         version: '0.1.0',
-        supabaseUrl: result.supabaseUrl,
-        anonKey: result.anonKey,
+        supabaseUrl: finalSupabaseUrl,
+        anonKey: finalAnonKey,
         accessToken: result.accessToken,
         refreshToken: result.refreshToken,
         expiresAt: Date.now() + result.expiresIn * 1000,

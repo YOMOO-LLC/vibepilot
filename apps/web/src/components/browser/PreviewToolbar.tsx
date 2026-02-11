@@ -13,7 +13,14 @@ export function PreviewToolbar() {
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
-      navigate(inputUrl);
+      let url = inputUrl.trim();
+      if (url && !url.match(/^https?:\/\//i)) {
+        url = `https://${url}`;
+      }
+      if (url) {
+        navigate(url);
+        setInputUrl(url);
+      }
     }
   };
 

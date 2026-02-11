@@ -33,16 +33,11 @@ export class ScreencastStream extends EventEmitter {
     const maxWidth = this.lastOptions.maxWidth ?? 1280;
     const maxHeight = this.lastOptions.maxHeight ?? 720;
 
-    this.frameHandler = (params: any) => {
-      if (!this.running) return;
-      this.emit('frame', {
-        data: params.data,
-        metadata: params.metadata,
-      });
-      this.cdpPage.screencastFrameAck({ sessionId: params.sessionId });
-    };
-
-    this.cdpPage.on('screencastFrame', this.frameHandler);
+    // Remove existing handler if any (prevents listener stacking)
+    if (this.frameHandler) {
+      const remove = this.cdpPage.off ?? this.cdpPage.removeListener;
+      remove?.call(this.cdpPage, 'screencastFrame', this.frameHandler);
+    }
 
     await this.cdpPage.startScreencast({
       format: 'jpeg',
@@ -51,6 +46,17 @@ export class ScreencastStream extends EventEmitter {
       maxHeight,
       everyNthFrame: 1,
     });
+
+    this.frameHandler = (params: any) => {
+      if (!this.running) return;
+      this.cdpPage.screencastFrameAck({ sessionId: params.sessionId }).catch(() => {});
+      this.emit('frame', {
+        data: params.data,
+        metadata: params.metadata,
+      });
+    };
+
+    this.cdpPage.on('screencastFrame', this.frameHandler);
   }
 
   async stop(): Promise<void> {

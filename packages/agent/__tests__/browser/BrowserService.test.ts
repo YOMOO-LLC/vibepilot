@@ -29,6 +29,8 @@ const { mockCDPClient, mockCDP, mockDetect, mockSpawn } = vi.hoisted(() => {
       evaluate: vi.fn().mockResolvedValue({ result: { value: 'default' } }),
     },
     close: vi.fn().mockResolvedValue(undefined),
+    on: vi.fn(),
+    off: vi.fn(),
   };
 
   const mockCDP = vi.fn().mockResolvedValue(mockCDPClient);
@@ -281,6 +283,188 @@ describe('BrowserService', () => {
 
     expect(mockCDPClient.Runtime.evaluate).not.toHaveBeenCalled();
     expect(cursorSpy).not.toHaveBeenCalled();
+  });
+
+  describe('URL validation', () => {
+    it('rejects file:// scheme navigation', async () => {
+      const startPromise = service.start('project-1');
+      setTimeout(() => {
+        mockChildProcess.stderr.emit(
+          'data',
+          Buffer.from('DevTools listening on ws://127.0.0.1:9222/devtools/browser/abc\n')
+        );
+      }, 10);
+      await startPromise;
+
+      await expect(service.navigate('file:///etc/passwd')).rejects.toThrow(
+        'Blocked navigation to disallowed scheme'
+      );
+    });
+
+    it('rejects javascript: scheme navigation', async () => {
+      const startPromise = service.start('project-1');
+      setTimeout(() => {
+        mockChildProcess.stderr.emit(
+          'data',
+          Buffer.from('DevTools listening on ws://127.0.0.1:9222/devtools/browser/abc\n')
+        );
+      }, 10);
+      await startPromise;
+
+      await expect(service.navigate('javascript:alert(1)')).rejects.toThrow(
+        'Blocked navigation to disallowed scheme'
+      );
+    });
+
+    it('allows http:// and https:// navigation', async () => {
+      const startPromise = service.start('project-1');
+      setTimeout(() => {
+        mockChildProcess.stderr.emit(
+          'data',
+          Buffer.from('DevTools listening on ws://127.0.0.1:9222/devtools/browser/abc\n')
+        );
+      }, 10);
+      await startPromise;
+
+      await service.navigate('http://localhost:3000');
+      await service.navigate('https://example.com');
+      expect(mockCDPClient.Page.navigate).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('Chrome crash detection', () => {
+    it('emits crash event when Chrome exits unexpectedly', async () => {
+      const startPromise = service.start('project-1');
+      setTimeout(() => {
+        mockChildProcess.stderr.emit(
+          'data',
+          Buffer.from('DevTools listening on ws://127.0.0.1:9222/devtools/browser/abc\n')
+        );
+      }, 10);
+      await startPromise;
+
+      const crashSpy = vi.fn();
+      service.on('crash', crashSpy);
+
+      // Simulate Chrome crash
+      mockChildProcess.emit('exit', 1, null);
+
+      expect(crashSpy).toHaveBeenCalledWith({ code: 1, signal: null });
+      expect(service.isRunning()).toBe(false);
+      expect(service.getCdpPort()).toBeNull();
+    });
+
+    it('emits error event when CDP disconnects', async () => {
+      // Track the disconnect handler registered on the CDP client
+      let disconnectHandler: (() => void) | null = null;
+      mockCDPClient.on.mockImplementation((event: string, handler: () => void) => {
+        if (event === 'disconnect') {
+          disconnectHandler = handler;
+        }
+      });
+
+      const startPromise = service.start('project-1');
+      setTimeout(() => {
+        mockChildProcess.stderr.emit(
+          'data',
+          Buffer.from('DevTools listening on ws://127.0.0.1:9222/devtools/browser/abc\n')
+        );
+      }, 10);
+      await startPromise;
+
+      const errorSpy = vi.fn();
+      service.on('error', errorSpy);
+
+      // Simulate CDP disconnect
+      expect(disconnectHandler).not.toBeNull();
+      disconnectHandler!();
+
+      expect(errorSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'CDP connection lost' })
+      );
+    });
+  });
+
+  describe('concurrent start guard', () => {
+    it('coalesces simultaneous start calls into single launch', async () => {
+      // Start two calls concurrently before Chrome is ready
+      const promise1 = service.start('project-1');
+      const promise2 = service.start('project-1');
+
+      setTimeout(() => {
+        mockChildProcess.stderr.emit(
+          'data',
+          Buffer.from('DevTools listening on ws://127.0.0.1:9222/devtools/browser/abc\n')
+        );
+      }, 10);
+
+      const [info1, info2] = await Promise.all([promise1, promise2]);
+
+      // Only one Chrome process should be spawned
+      expect(mockSpawn).toHaveBeenCalledTimes(1);
+      expect(info1.cdpPort).toBe(info2.cdpPort);
+    });
+  });
+
+  describe('ackFrame and adaptive quality', () => {
+    it('ackFrame records latency without error', async () => {
+      const startPromise = service.start('project-1');
+      setTimeout(() => {
+        mockChildProcess.stderr.emit(
+          'data',
+          Buffer.from('DevTools listening on ws://127.0.0.1:9222/devtools/browser/abc\n')
+        );
+      }, 10);
+      await startPromise;
+
+      // ackFrame with unknown timestamp should be a no-op
+      await service.ackFrame(99999);
+      // Should not throw
+    });
+  });
+
+  describe('resize', () => {
+    it('updates viewport dimensions', async () => {
+      const startPromise = service.start('project-1');
+      setTimeout(() => {
+        mockChildProcess.stderr.emit(
+          'data',
+          Buffer.from('DevTools listening on ws://127.0.0.1:9222/devtools/browser/abc\n')
+        );
+      }, 10);
+      await startPromise;
+
+      await service.resize(1920, 1080);
+
+      expect(mockCDPClient.Emulation.setDeviceMetricsOverride).toHaveBeenCalledWith(
+        expect.objectContaining({ width: 1920, height: 1080 })
+      );
+    });
+
+    it('throws when browser not started', async () => {
+      await expect(service.resize(1920, 1080)).rejects.toThrow('Browser not started');
+    });
+  });
+
+  describe('resilient stop', () => {
+    it('completes cleanup even when screencast.stop() throws', async () => {
+      const startPromise = service.start('project-1');
+      setTimeout(() => {
+        mockChildProcess.stderr.emit(
+          'data',
+          Buffer.from('DevTools listening on ws://127.0.0.1:9222/devtools/browser/abc\n')
+        );
+      }, 10);
+      await startPromise;
+
+      // Make screencast stop throw
+      mockCDPClient.Page.stopScreencast.mockRejectedValueOnce(new Error('CDP dead'));
+
+      // stop() should still complete without throwing
+      await service.stop();
+      expect(mockChildProcess.kill).toHaveBeenCalled();
+      expect(service.isRunning()).toBe(false);
+    });
   });
 
   describe('idle timeout', () => {

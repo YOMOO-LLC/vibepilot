@@ -7,6 +7,8 @@ import { PreviewPlaceholder } from './PreviewPlaceholder';
 
 export function PreviewPanel() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const imgRef = useRef<HTMLImageElement | null>(null);
+  const rafIdRef = useRef<number | null>(null);
   const { state, latestFrame, remoteCursor, viewportWidth, viewportHeight, sendInput } =
     useBrowserStore();
 
@@ -16,11 +18,25 @@ export function PreviewPanel() {
     const ctx = canvasRef.current.getContext('2d');
     if (!ctx) return;
 
-    const img = new Image();
+    // Reuse a single Image instance to reduce GC pressure
+    if (!imgRef.current) {
+      imgRef.current = new Image();
+    }
+    const img = imgRef.current;
+    const canvas = canvasRef.current;
+
     img.onload = () => {
-      ctx.drawImage(img, 0, 0, canvasRef.current!.width, canvasRef.current!.height);
+      // Guard against unmount
+      if (canvas) {
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      }
     };
     img.src = `data:image/jpeg;base64,${latestFrame}`;
+
+    return () => {
+      // Cancel pending load
+      img.onload = null;
+    };
   }, [latestFrame]);
 
   const toRemote = useCallback(
@@ -36,8 +52,45 @@ export function PreviewPanel() {
     [viewportWidth, viewportHeight]
   );
 
-  const getModifiers = (e: React.KeyboardEvent | React.MouseEvent) =>
-    (e.altKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.metaKey ? 4 : 0) | (e.shiftKey ? 8 : 0);
+  const getModifiers = (e: {
+    altKey: boolean;
+    ctrlKey: boolean;
+    metaKey: boolean;
+    shiftKey: boolean;
+  }) => (e.altKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.metaKey ? 4 : 0) | (e.shiftKey ? 8 : 0);
+
+  // Native wheel listener with passive: false so preventDefault() works
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = canvas.getBoundingClientRect();
+      const x = ((e.clientX - rect.left) / rect.width) * viewportWidth;
+      const y = ((e.clientY - rect.top) / rect.height) * viewportHeight;
+      sendInput({
+        type: 'mouseWheel',
+        x,
+        y,
+        deltaX: e.deltaX,
+        deltaY: e.deltaY,
+        modifiers: getModifiers(e),
+      });
+    };
+
+    canvas.addEventListener('wheel', handleWheel, { passive: false });
+    return () => canvas.removeEventListener('wheel', handleWheel);
+  }, [viewportWidth, viewportHeight]);
+
+  // Cleanup pending requestAnimationFrame on unmount
+  useEffect(() => {
+    return () => {
+      if (rafIdRef.current !== null) {
+        cancelAnimationFrame(rafIdRef.current);
+      }
+    };
+  }, []);
 
   if (state !== 'running') {
     return <PreviewPlaceholder />;
@@ -77,17 +130,13 @@ export function PreviewPanel() {
           });
         }}
         onMouseMove={(e) => {
+          // Throttle to one event per animation frame
+          if (rafIdRef.current !== null) return;
           const pos = toRemote(e);
-          sendInput({ type: 'mouseMoved', ...pos, modifiers: getModifiers(e) });
-        }}
-        onWheel={(e) => {
-          e.preventDefault();
-          const pos = toRemote(e);
-          sendInput({
-            type: 'mouseWheel',
-            ...pos,
-            deltaX: e.deltaX,
-            deltaY: e.deltaY,
+          const mods = getModifiers(e);
+          rafIdRef.current = requestAnimationFrame(() => {
+            sendInput({ type: 'mouseMoved', ...pos, modifiers: mods });
+            rafIdRef.current = null;
           });
         }}
         onKeyDown={(e) => {

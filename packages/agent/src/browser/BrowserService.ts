@@ -42,6 +42,20 @@ export class BrowserService extends EventEmitter {
     return this.chromeProcess !== null;
   }
 
+  private validateUrl(url: string): void {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        throw new Error(`Blocked navigation to disallowed scheme: ${parsed.protocol}`);
+      }
+    } catch (err) {
+      if (err instanceof TypeError) {
+        throw new Error(`Invalid URL: ${url}`);
+      }
+      throw err;
+    }
+  }
+
   getCdpPort(): number | null {
     return this.cdpPort;
   }
@@ -86,7 +100,7 @@ export class BrowserService extends EventEmitter {
     this.viewportHeight = height;
 
     const profilePath = await this.profileManager.getProfilePath(projectId);
-    const port = 9222 + Math.floor(Math.random() * 1000);
+    const port = 9222 + Math.floor(Math.random() * 50000);
 
     const args = [
       '--headless=shell',
@@ -123,6 +137,11 @@ export class BrowserService extends EventEmitter {
     this.screencast = new ScreencastStream(Page);
     this.screencast.on('frame', (frame: any) => {
       const timestamp = Date.now();
+      // Evict oldest entries if map exceeds limit
+      if (this.frameTimestamps.size > 1000) {
+        const firstKey = this.frameTimestamps.keys().next().value;
+        if (firstKey !== undefined) this.frameTimestamps.delete(firstKey);
+      }
       this.frameTimestamps.set(timestamp, timestamp);
       this.emit('frame', {
         data: frame.data,
@@ -150,8 +169,29 @@ export class BrowserService extends EventEmitter {
 
     // Navigate to initial URL if provided
     if (options?.url) {
+      this.validateUrl(options.url);
       await Page.navigate({ url: options.url });
     }
+
+    this.cdpClient.on('disconnect', () => {
+      // CDP connection lost - clean up state
+      this.cdpClient = null;
+      this.screencast = null;
+      this.emit('error', new Error('CDP connection lost'));
+    });
+
+    this.chromeProcess!.on('exit', (code: number | null, signal: string | null) => {
+      if (this.chromeProcess) {
+        // Chrome crashed at runtime
+        this.chromeProcess = null;
+        this.screencast = null;
+        this.cdpClient = null;
+        this.cdpPort = null;
+        this.startPromise = null;
+        this.clearIdleTimer();
+        this.emit('crash', { code, signal });
+      }
+    });
 
     return { cdpPort: port, viewportWidth: width, viewportHeight: height };
   }
@@ -161,7 +201,11 @@ export class BrowserService extends EventEmitter {
     this.clearIdleTimer();
     this.idleTimer = setTimeout(async () => {
       this.emit('idle-shutdown');
-      await this.stop();
+      try {
+        await this.stop();
+      } catch {
+        /* ignore shutdown errors */
+      }
     }, this.idleTimeoutMs);
   }
 
@@ -182,11 +226,19 @@ export class BrowserService extends EventEmitter {
   async stop(): Promise<void> {
     this.clearIdleTimer();
     if (this.screencast) {
-      await this.screencast.stop();
+      try {
+        await this.screencast.stop();
+      } catch {
+        /* CDP may already be dead */
+      }
       this.screencast = null;
     }
     if (this.cdpClient) {
-      await this.cdpClient.close();
+      try {
+        await this.cdpClient.close();
+      } catch {
+        /* connection may already be closed */
+      }
       this.cdpClient = null;
     }
     if (this.chromeProcess) {
@@ -203,6 +255,7 @@ export class BrowserService extends EventEmitter {
 
   async navigate(url: string): Promise<void> {
     if (!this.cdpClient) throw new Error('Browser not started');
+    this.validateUrl(url);
     await this.cdpClient.Page.navigate({ url });
   }
 

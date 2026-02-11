@@ -79,7 +79,7 @@ export async function configAuth(configManager: ConfigManager): Promise<void> {
     case 'cloud': {
       const webUrl = await input({
         message: 'Cloud web URL:',
-        default: 'https://vibepilot.cloud',
+        default: config.cloud?.webUrl || 'https://vibepilot.cloud',
       });
       config.cloud = { webUrl };
       // Clear other auth fields
