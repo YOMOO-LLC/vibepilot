@@ -4,55 +4,60 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import type { ProjectInfo } from '@vibepilot/protocol';
 import { ProjectValidator } from './ProjectValidator.js';
-
-interface ProjectConfig {
-  projects: ProjectInfo[];
-  currentProjectId: string | null;
-}
+import { ConfigManager } from './ConfigManager.js';
 
 export class ProjectManager {
   private projects: Map<string, ProjectInfo> = new Map();
   private currentProjectId: string | null = null;
-  private configPath: string;
   private configDir: string;
+  private configManager: ConfigManager;
 
-  constructor(configDir?: string) {
+  constructor(configDir?: string, configManager?: ConfigManager) {
     this.configDir = configDir || path.join(os.homedir(), '.vibepilot');
-    this.configPath = path.join(this.configDir, 'projects.json');
+    this.configManager = configManager || new ConfigManager(this.configDir);
   }
 
   async load(): Promise<void> {
-    try {
-      const data = await fs.readFile(this.configPath, 'utf-8');
-      const config: ProjectConfig = JSON.parse(data);
+    const config = await this.configManager.load();
 
-      this.projects.clear();
-      for (const project of config.projects) {
-        this.projects.set(project.id, project);
+    // Migration: if config has no projects, check for old projects.json
+    if (config.projects.length === 0) {
+      const oldPath = path.join(this.configDir, 'projects.json');
+      try {
+        const oldData = await fs.readFile(oldPath, 'utf-8');
+        const oldConfig = JSON.parse(oldData);
+        if (
+          oldConfig.projects &&
+          Array.isArray(oldConfig.projects) &&
+          oldConfig.projects.length > 0
+        ) {
+          config.projects = oldConfig.projects;
+          if (oldConfig.currentProjectId) {
+            config.currentProjectId = oldConfig.currentProjectId;
+          }
+          await this.configManager.save(config);
+          await fs.unlink(oldPath); // Clean up old file
+        }
+      } catch {
+        // Old file doesn't exist or is corrupted, skip migration
       }
-      this.currentProjectId = config.currentProjectId;
-    } catch (err: unknown) {
-      // File doesn't exist or is unreadable -- start fresh
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-        this.projects.clear();
-        this.currentProjectId = null;
-        return;
-      }
-      throw err;
     }
+
+    // Populate in-memory Map from config.projects
+    this.projects.clear();
+    for (const p of config.projects) {
+      this.projects.set(p.id, p);
+    }
+    this.currentProjectId = config.currentProjectId ?? null;
   }
 
   private async save(): Promise<void> {
-    await fs.mkdir(this.configDir, { recursive: true });
+    const config = await this.configManager.load();
 
-    const config: ProjectConfig = {
-      projects: Array.from(this.projects.values()),
-      currentProjectId: this.currentProjectId,
-    };
+    config.projects = Array.from(this.projects.values());
+    config.currentProjectId = this.currentProjectId;
 
-    await fs.writeFile(this.configPath, JSON.stringify(config, null, 2), 'utf-8');
-    // 设置文件权限为仅所有者读写
-    await fs.chmod(this.configPath, 0o600);
+    await this.configManager.save(config);
   }
 
   async registerProject(name: string, projectPath: string): Promise<ProjectInfo> {
@@ -68,26 +73,26 @@ export class ProjectManager {
   }
 
   /**
-   * 添加新项目（带路径验证和元数据）
+   * Add a new project with path validation and metadata
    */
   async addProject(
     name: string,
     projectPath: string,
     metadata?: { favorite?: boolean; color?: string; tags?: string[] }
   ): Promise<ProjectInfo> {
-    // 1. 验证路径
+    // 1. Validate path
     const validation = await ProjectValidator.validate(projectPath);
     if (!validation.valid) {
       throw new Error(validation.error || 'Invalid project path');
     }
 
-    // 2. 检查路径是否已存在
+    // 2. Check if path already exists
     const existingProject = this.getProjectByPath(validation.resolvedPath!);
     if (existingProject) {
       throw new Error(`Project path already exists: ${existingProject.name}`);
     }
 
-    // 3. 创建项目
+    // 3. Create project
     const project: ProjectInfo = {
       id: uuidv4(),
       name,
@@ -102,7 +107,7 @@ export class ProjectManager {
   }
 
   /**
-   * 更新项目元数据
+   * Update project metadata
    */
   async updateProject(
     projectId: string,
@@ -119,7 +124,7 @@ export class ProjectManager {
   }
 
   /**
-   * 更新项目的最后访问时间
+   * Update project last access time
    */
   async touchProject(projectId: string): Promise<void> {
     const project = this.projects.get(projectId);
@@ -130,14 +135,14 @@ export class ProjectManager {
   }
 
   /**
-   * 根据路径查找项目
+   * Find project by path
    */
   getProjectByPath(projectPath: string): ProjectInfo | null {
     return Array.from(this.projects.values()).find((p) => p.path === projectPath) || null;
   }
 
   /**
-   * 根据 ID 获取项目
+   * Get project by ID
    */
   getProject(projectId: string): ProjectInfo | null {
     return this.projects.get(projectId) || null;
@@ -168,7 +173,7 @@ export class ProjectManager {
     }
 
     this.currentProjectId = projectId;
-    // 更新最后访问时间
+    // Update last access time
     project.lastAccessed = Date.now();
     await this.save();
     return project;

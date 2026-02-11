@@ -2,13 +2,15 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { DEFAULT_PORT } from '@vibepilot/protocol';
+import type { ProjectInfo } from '@vibepilot/protocol';
 
+/** @deprecated Use ProjectInfo from @vibepilot/protocol instead */
 export interface ProjectEntry {
   id: string;
   name: string;
   path: string;
-  favorite: boolean;
-  addedAt: number;
+  favorite?: boolean;
+  addedAt?: number;
 }
 
 export interface VibePilotConfig {
@@ -30,7 +32,8 @@ export interface VibePilotConfig {
     sessionTimeout: number;
     agentName: string;
   };
-  projects: ProjectEntry[];
+  projects: ProjectInfo[];
+  currentProjectId?: string | null;
 }
 
 export class ConfigManager {
@@ -54,6 +57,7 @@ export class ConfigManager {
         agentName: os.hostname(),
       },
       projects: [],
+      currentProjectId: null,
     };
   }
 

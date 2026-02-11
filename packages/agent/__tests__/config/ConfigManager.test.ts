@@ -67,7 +67,7 @@ describe('ConfigManager', () => {
         name: 'TestProject',
         path: '/home/user/test',
         favorite: true,
-        addedAt: Date.now(),
+        createdAt: Date.now(),
       },
     ];
 

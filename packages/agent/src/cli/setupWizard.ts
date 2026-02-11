@@ -95,7 +95,7 @@ export async function runSetupWizard(
       name: projectName,
       path: projectPath,
       favorite: false,
-      addedAt: Date.now(),
+      createdAt: Date.now(),
     });
   }
 

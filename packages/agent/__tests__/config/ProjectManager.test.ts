@@ -3,6 +3,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import { ProjectManager } from '../../src/config/ProjectManager.js';
+import { ConfigManager } from '../../src/config/ConfigManager.js';
 import type { ProjectInfo } from '@vibepilot/protocol';
 
 describe('ProjectManager', () => {
@@ -77,9 +78,7 @@ describe('ProjectManager', () => {
   });
 
   it('switchProject throws for non-existent projectId', async () => {
-    await expect(manager.switchProject('non-existent-id')).rejects.toThrow(
-      'Project not found'
-    );
+    await expect(manager.switchProject('non-existent-id')).rejects.toThrow('Project not found');
   });
 
   it('removeProject removes a project', async () => {
@@ -93,9 +92,7 @@ describe('ProjectManager', () => {
   });
 
   it('removeProject throws for non-existent projectId', async () => {
-    await expect(manager.removeProject('non-existent-id')).rejects.toThrow(
-      'Project not found'
-    );
+    await expect(manager.removeProject('non-existent-id')).rejects.toThrow('Project not found');
   });
 
   it('removeProject clears currentProjectId if removing the active project', async () => {
@@ -133,9 +130,7 @@ describe('ProjectManager', () => {
     });
 
     it('load handles missing config file gracefully (fresh start)', async () => {
-      const freshDir = await fs.mkdtemp(
-        path.join(os.tmpdir(), 'vibepilot-fresh-')
-      );
+      const freshDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vibepilot-fresh-'));
       try {
         const freshManager = new ProjectManager(freshDir);
         await freshManager.load();
@@ -152,10 +147,96 @@ describe('ProjectManager', () => {
       const nestedManager = new ProjectManager(nestedDir);
       await nestedManager.registerProject('App1', '/path/app1');
 
-      // Verify the file was created
-      const configPath = path.join(nestedDir, 'projects.json');
+      // Verify the config.json file was created
+      const configPath = path.join(nestedDir, 'config.json');
       const stat = await fs.stat(configPath);
       expect(stat.isFile()).toBe(true);
+    });
+  });
+
+  describe('ConfigManager migration', () => {
+    it('imports projects from old projects.json into config.json', async () => {
+      // Create old-style projects.json with 1 project
+      const oldProject: ProjectInfo = {
+        id: 'old-proj-1',
+        name: 'OldProject',
+        path: '/home/user/old-project',
+      };
+      const oldConfig = {
+        projects: [oldProject],
+        currentProjectId: null,
+      };
+      await fs.writeFile(
+        path.join(tmpDir, 'projects.json'),
+        JSON.stringify(oldConfig, null, 2),
+        'utf-8'
+      );
+
+      // Create ProjectManager with ConfigManager pointing to same tmpDir
+      const configManager = new ConfigManager(tmpDir);
+      const pm = new ProjectManager(tmpDir, configManager);
+      await pm.load();
+
+      // Verify project is accessible
+      expect(pm.getProject('old-proj-1')).toBeDefined();
+      expect(pm.getProject('old-proj-1')?.name).toBe('OldProject');
+      expect(pm.listProjects()).toHaveLength(1);
+
+      // Verify old projects.json is deleted
+      await expect(fs.access(path.join(tmpDir, 'projects.json'))).rejects.toThrow();
+
+      // Verify config.json now contains the project
+      const config = await configManager.load();
+      expect(config.projects).toHaveLength(1);
+      expect(config.projects[0].name).toBe('OldProject');
+    });
+
+    it('works with empty config and no old file (fresh start)', async () => {
+      const configManager = new ConfigManager(tmpDir);
+      const pm = new ProjectManager(tmpDir, configManager);
+      await pm.load();
+
+      // Verify empty state
+      expect(pm.listProjects()).toEqual([]);
+
+      // Add a project, verify it persists to config.json
+      await pm.registerProject('NewApp', '/path/new-app');
+      expect(pm.listProjects()).toHaveLength(1);
+
+      // Verify config.json contains the project
+      const config = await configManager.load();
+      expect(config.projects).toHaveLength(1);
+      expect(config.projects[0].name).toBe('NewApp');
+    });
+
+    it('does not re-import old file when config already has projects', async () => {
+      const configManager = new ConfigManager(tmpDir);
+
+      // Save a project via ConfigManager first
+      const config = configManager.getDefault();
+      config.projects = [{ id: 'config-proj', name: 'ConfigProject', path: '/path/config-proj' }];
+      await configManager.save(config);
+
+      // Also create old projects.json with a DIFFERENT project
+      const oldConfig = {
+        projects: [{ id: 'old-proj', name: 'OldProject', path: '/path/old-proj' }],
+        currentProjectId: null,
+      };
+      await fs.writeFile(
+        path.join(tmpDir, 'projects.json'),
+        JSON.stringify(oldConfig, null, 2),
+        'utf-8'
+      );
+
+      // Load ProjectManager
+      const pm = new ProjectManager(tmpDir, configManager);
+      await pm.load();
+
+      // Only the config project should exist (old file NOT re-imported)
+      expect(pm.listProjects()).toHaveLength(1);
+      expect(pm.getProject('config-proj')).toBeDefined();
+      expect(pm.getProject('config-proj')?.name).toBe('ConfigProject');
+      expect(pm.getProject('old-proj')).toBeNull();
     });
   });
 });

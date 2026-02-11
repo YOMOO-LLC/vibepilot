@@ -212,7 +212,7 @@ export async function configProjects(configManager: ConfigManager): Promise<void
           name: projectName,
           path: projectPath,
           favorite: false,
-          addedAt: Date.now(),
+          createdAt: Date.now(),
         });
         await configManager.save(config);
         console.log(`Project "${projectName}" added.`);
