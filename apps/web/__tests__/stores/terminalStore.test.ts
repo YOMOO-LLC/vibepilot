@@ -36,11 +36,7 @@ describe('terminalStore', () => {
     store.createTab();
 
     const state = useTerminalStore.getState();
-    expect(state.tabs.map(t => t.title)).toEqual([
-      'Terminal 1',
-      'Terminal 2',
-      'Terminal 3',
-    ]);
+    expect(state.tabs.map((t) => t.title)).toEqual(['Terminal 1', 'Terminal 2', 'Terminal 3']);
   });
 
   it('closeTab removes tab and switches active', () => {

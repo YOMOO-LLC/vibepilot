@@ -83,9 +83,7 @@ export function ProjectSelectorModal({
   return (
     <div className="fixed inset-0 z-50 bg-zinc-950 flex flex-col items-center justify-center">
       <div className="w-full max-w-5xl px-8">
-        <h1 className="text-4xl font-bold text-zinc-100 mb-6">
-          Select a Project
-        </h1>
+        <h1 className="text-4xl font-bold text-zinc-100 mb-6">Select a Project</h1>
 
         {/* 搜索框（项目数 > 4 时显示） */}
         {projects.length > 4 && (

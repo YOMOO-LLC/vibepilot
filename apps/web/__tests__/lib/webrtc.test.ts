@@ -142,9 +142,7 @@ describe('VPWebRTCClient', () => {
       data: 'hello',
     });
 
-    expect(terminalChannel.send).toHaveBeenCalledWith(
-      expect.stringContaining('"terminal:input"')
-    );
+    expect(terminalChannel.send).toHaveBeenCalledWith(expect.stringContaining('"terminal:input"'));
 
     const sentData = JSON.parse(terminalChannel.send.mock.calls[0][0]);
     expect(sentData.type).toBe('terminal:input');

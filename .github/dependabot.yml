@@ -1,59 +1,59 @@
 version: 2
 updates:
   # Enable version updates for npm
-  - package-ecosystem: "npm"
-    directory: "/"
+  - package-ecosystem: 'npm'
+    directory: '/'
     schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "09:00"
+      interval: 'weekly'
+      day: 'monday'
+      time: '09:00'
     open-pull-requests-limit: 10
     labels:
-      - "dependencies"
-      - "automated"
+      - 'dependencies'
+      - 'automated'
     commit-message:
-      prefix: "chore"
-      include: "scope"
+      prefix: 'chore'
+      include: 'scope'
     ignore:
       # Ignore major version updates for stable packages
-      - dependency-name: "react"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "next"
-        update-types: ["version-update:semver-major"]
+      - dependency-name: 'react'
+        update-types: ['version-update:semver-major']
+      - dependency-name: 'next'
+        update-types: ['version-update:semver-major']
     groups:
       # Group TypeScript-related updates
       typescript:
         patterns:
-          - "typescript"
-          - "@typescript-eslint/*"
-          - "@types/*"
+          - 'typescript'
+          - '@typescript-eslint/*'
+          - '@types/*'
       # Group testing-related updates
       testing:
         patterns:
-          - "vitest"
-          - "@vitest/*"
-          - "@testing-library/*"
-          - "playwright"
+          - 'vitest'
+          - '@vitest/*'
+          - '@testing-library/*'
+          - 'playwright'
       # Group linting/formatting updates
       linting:
         patterns:
-          - "eslint"
-          - "eslint-*"
-          - "prettier"
+          - 'eslint'
+          - 'eslint-*'
+          - 'prettier'
       # Group Next.js ecosystem
       nextjs:
         patterns:
-          - "next"
-          - "react"
-          - "react-dom"
+          - 'next'
+          - 'react'
+          - 'react-dom'
 
   # GitHub Actions
-  - package-ecosystem: "github-actions"
-    directory: "/"
+  - package-ecosystem: 'github-actions'
+    directory: '/'
     schedule:
-      interval: "monthly"
+      interval: 'monthly'
     labels:
-      - "dependencies"
-      - "github-actions"
+      - 'dependencies'
+      - 'github-actions'
     commit-message:
-      prefix: "ci"
+      prefix: 'ci'

@@ -55,7 +55,7 @@ describe('VPWebSocketClient', () => {
     expect(states).toContain('connecting');
 
     // Wait for "open" event
-    await new Promise(r => setTimeout(r, 10));
+    await new Promise((r) => setTimeout(r, 10));
     expect(states).toContain('connected');
     expect(client.state).toBe('connected');
   });
@@ -67,7 +67,7 @@ describe('VPWebSocketClient', () => {
     client.connect('ws://localhost:9800', (state) => {
       states.push(state);
     });
-    await new Promise(r => setTimeout(r, 10));
+    await new Promise((r) => setTimeout(r, 10));
 
     client.disconnect();
     expect(states).toContain('disconnected');
@@ -77,7 +77,7 @@ describe('VPWebSocketClient', () => {
   it('sends messages as serialized JSON', async () => {
     const client = new VPWebSocketClient();
     client.connect('ws://localhost:9800');
-    await new Promise(r => setTimeout(r, 10));
+    await new Promise((r) => setTimeout(r, 10));
 
     client.send(MessageType.TERMINAL_CREATE, {
       sessionId: 'sess-1',
@@ -97,15 +97,15 @@ describe('VPWebSocketClient', () => {
 
   it('throws when sending while disconnected', () => {
     const client = new VPWebSocketClient();
-    expect(() =>
-      client.send(MessageType.TERMINAL_INPUT, { sessionId: 's', data: 'd' })
-    ).toThrow('WebSocket not connected');
+    expect(() => client.send(MessageType.TERMINAL_INPUT, { sessionId: 's', data: 'd' })).toThrow(
+      'WebSocket not connected'
+    );
   });
 
   it('receives and routes messages by type', async () => {
     const client = new VPWebSocketClient();
     client.connect('ws://localhost:9800');
-    await new Promise(r => setTimeout(r, 10));
+    await new Promise((r) => setTimeout(r, 10));
 
     const handler = vi.fn();
     client.on(MessageType.TERMINAL_OUTPUT, handler);
@@ -132,7 +132,7 @@ describe('VPWebSocketClient', () => {
   it('supports global message handler', async () => {
     const client = new VPWebSocketClient();
     client.connect('ws://localhost:9800');
-    await new Promise(r => setTimeout(r, 10));
+    await new Promise((r) => setTimeout(r, 10));
 
     const handler = vi.fn();
     client.onAny(handler);
@@ -153,7 +153,7 @@ describe('VPWebSocketClient', () => {
   it('unsubscribe removes handler', async () => {
     const client = new VPWebSocketClient();
     client.connect('ws://localhost:9800');
-    await new Promise(r => setTimeout(r, 10));
+    await new Promise((r) => setTimeout(r, 10));
 
     const handler = vi.fn();
     const unsub = client.on(MessageType.TERMINAL_OUTPUT, handler);

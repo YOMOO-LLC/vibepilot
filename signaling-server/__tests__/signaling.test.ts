@@ -66,7 +66,7 @@ describe('SignalingServer', () => {
     ws1.send(JSON.stringify({ type: 'room:join', payload: { roomId: 'room-1' } }));
 
     // Give it time to process
-    await new Promise(r => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 50));
 
     // Server should track this client in room-1
     expect(server.getRoomSize('room-1')).toBe(1);
@@ -84,7 +84,7 @@ describe('SignalingServer', () => {
     ws1.send(JSON.stringify({ type: 'room:join', payload: { roomId: 'room-1' } }));
     ws2.send(JSON.stringify({ type: 'room:join', payload: { roomId: 'room-1' } }));
 
-    await new Promise(r => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 50));
 
     // ws1 sends an offer, ws2 should receive it
     const receivePromise = waitForMessage(ws2, MessageType.SIGNAL_OFFER);
@@ -110,7 +110,7 @@ describe('SignalingServer', () => {
     ws1.send(JSON.stringify({ type: 'room:join', payload: { roomId: 'room-1' } }));
     ws2.send(JSON.stringify({ type: 'room:join', payload: { roomId: 'room-1' } }));
 
-    await new Promise(r => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 50));
 
     // ws2 sends an answer, ws1 should receive it
     const receivePromise = waitForMessage(ws1, MessageType.SIGNAL_ANSWER);
@@ -136,7 +136,7 @@ describe('SignalingServer', () => {
     ws1.send(JSON.stringify({ type: 'room:join', payload: { roomId: 'room-1' } }));
     ws2.send(JSON.stringify({ type: 'room:join', payload: { roomId: 'room-1' } }));
 
-    await new Promise(r => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 50));
 
     const receivePromise = waitForMessage(ws2, MessageType.SIGNAL_CANDIDATE);
 
@@ -149,9 +149,7 @@ describe('SignalingServer', () => {
 
     const received = await receivePromise;
     expect(received.type).toBe(MessageType.SIGNAL_CANDIDATE);
-    expect(received.payload.candidate).toBe(
-      'candidate:1 1 UDP 2130706431 10.0.0.1 5000 typ host'
-    );
+    expect(received.payload.candidate).toBe('candidate:1 1 UDP 2130706431 10.0.0.1 5000 typ host');
   });
 
   it('cleans up room when client disconnects', async () => {
@@ -165,12 +163,12 @@ describe('SignalingServer', () => {
     ws1.send(JSON.stringify({ type: 'room:join', payload: { roomId: 'room-1' } }));
     ws2.send(JSON.stringify({ type: 'room:join', payload: { roomId: 'room-1' } }));
 
-    await new Promise(r => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 50));
     expect(server.getRoomSize('room-1')).toBe(2);
 
     ws1.close();
 
-    await new Promise(r => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 100));
     expect(server.getRoomSize('room-1')).toBe(1);
   });
 
@@ -182,12 +180,12 @@ describe('SignalingServer', () => {
 
     ws1.send(JSON.stringify({ type: 'room:join', payload: { roomId: 'room-cleanup' } }));
 
-    await new Promise(r => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 50));
     expect(server.getRoomSize('room-cleanup')).toBe(1);
 
     ws1.close();
 
-    await new Promise(r => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 100));
     expect(server.getRoomSize('room-cleanup')).toBe(0);
   });
 
@@ -199,7 +197,7 @@ describe('SignalingServer', () => {
     clients.push(ws1);
 
     ws1.send(JSON.stringify({ type: 'room:join', payload: { roomId: 'room-solo' } }));
-    await new Promise(r => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 50));
 
     // Send an offer - should not bounce back
     const offerMsg = createMessage(MessageType.SIGNAL_OFFER, {
@@ -210,7 +208,7 @@ describe('SignalingServer', () => {
     // Wait briefly - no message should arrive
     const received = await Promise.race([
       waitForMessage(ws1, MessageType.SIGNAL_OFFER),
-      new Promise(resolve => setTimeout(() => resolve(null), 200)),
+      new Promise((resolve) => setTimeout(() => resolve(null), 200)),
     ]);
 
     expect(received).toBeNull();

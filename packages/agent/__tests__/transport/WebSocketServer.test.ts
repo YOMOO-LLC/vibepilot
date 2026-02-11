@@ -12,16 +12,20 @@ vi.mock('node-pty', () => {
 
     return {
       pid: Math.floor(Math.random() * 10000) + 1000,
-      onData: (cb: (data: string) => void) => { dataCallbacks.push(cb); },
-      onExit: (cb: (e: { exitCode: number }) => void) => { exitCallbacks.push(cb); },
+      onData: (cb: (data: string) => void) => {
+        dataCallbacks.push(cb);
+      },
+      onExit: (cb: (e: { exitCode: number }) => void) => {
+        exitCallbacks.push(cb);
+      },
       write: (data: string) => {
         if (killed) throw new Error('Process killed');
-        setTimeout(() => dataCallbacks.forEach(cb => cb(`output:${data}`)), 5);
+        setTimeout(() => dataCallbacks.forEach((cb) => cb(`output:${data}`)), 5);
       },
       resize: vi.fn(),
       kill: () => {
         killed = true;
-        exitCallbacks.forEach(cb => cb({ exitCode: 0 }));
+        exitCallbacks.forEach((cb) => cb({ exitCode: 0 }));
       },
     };
   };
@@ -116,19 +120,27 @@ describe('VPWebSocketServer', () => {
 
     // Create terminal first
     const createdPromise = waitForMessage(ws, MessageType.TERMINAL_CREATED);
-    ws.send(JSON.stringify(createMessage(MessageType.TERMINAL_CREATE, {
-      sessionId: 'sess-1',
-      cols: 80,
-      rows: 24,
-    })));
+    ws.send(
+      JSON.stringify(
+        createMessage(MessageType.TERMINAL_CREATE, {
+          sessionId: 'sess-1',
+          cols: 80,
+          rows: 24,
+        })
+      )
+    );
     await createdPromise;
 
     // Send input and wait for output
     const outputPromise = waitForMessage(ws, MessageType.TERMINAL_OUTPUT);
-    ws.send(JSON.stringify(createMessage(MessageType.TERMINAL_INPUT, {
-      sessionId: 'sess-1',
-      data: 'ls\r',
-    })));
+    ws.send(
+      JSON.stringify(
+        createMessage(MessageType.TERMINAL_INPUT, {
+          sessionId: 'sess-1',
+          data: 'ls\r',
+        })
+      )
+    );
 
     const output = await outputPromise;
     expect(output.type).toBe(MessageType.TERMINAL_OUTPUT);
@@ -145,20 +157,28 @@ describe('VPWebSocketServer', () => {
 
     // Create terminal first
     const createdPromise = waitForMessage(ws, MessageType.TERMINAL_CREATED);
-    ws.send(JSON.stringify(createMessage(MessageType.TERMINAL_CREATE, {
-      sessionId: 'sess-1',
-    })));
+    ws.send(
+      JSON.stringify(
+        createMessage(MessageType.TERMINAL_CREATE, {
+          sessionId: 'sess-1',
+        })
+      )
+    );
     await createdPromise;
 
     // Resize should not throw (no response expected)
-    ws.send(JSON.stringify(createMessage(MessageType.TERMINAL_RESIZE, {
-      sessionId: 'sess-1',
-      cols: 120,
-      rows: 40,
-    })));
+    ws.send(
+      JSON.stringify(
+        createMessage(MessageType.TERMINAL_RESIZE, {
+          sessionId: 'sess-1',
+          cols: 120,
+          rows: 40,
+        })
+      )
+    );
 
     // Give it a moment - no error means success
-    await new Promise(r => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 50));
   });
 
   it('cleans up sessions on client disconnect', async () => {
@@ -169,16 +189,20 @@ describe('VPWebSocketServer', () => {
 
     // Create terminal
     const createdPromise = waitForMessage(ws, MessageType.TERMINAL_CREATED);
-    ws.send(JSON.stringify(createMessage(MessageType.TERMINAL_CREATE, {
-      sessionId: 'sess-1',
-    })));
+    ws.send(
+      JSON.stringify(
+        createMessage(MessageType.TERMINAL_CREATE, {
+          sessionId: 'sess-1',
+        })
+      )
+    );
     await createdPromise;
 
     // Close connection
     ws.close();
 
     // Wait for cleanup
-    await new Promise(r => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 100));
 
     // Verify server is still running (accepts new connections)
     const ws2 = await connectClient(testPort);
@@ -193,36 +217,48 @@ describe('VPWebSocketServer', () => {
     // Create first client and terminal
     const ws1 = await connectClient(testPort);
     const createdPromise = waitForMessage(ws1, MessageType.TERMINAL_CREATED);
-    ws1.send(JSON.stringify(createMessage(MessageType.TERMINAL_CREATE, {
-      sessionId: 'sess-persist',
-      cols: 80,
-      rows: 24,
-    })));
+    ws1.send(
+      JSON.stringify(
+        createMessage(MessageType.TERMINAL_CREATE, {
+          sessionId: 'sess-persist',
+          cols: 80,
+          rows: 24,
+        })
+      )
+    );
     const created = await createdPromise;
     const originalPid = created.payload.pid;
 
     // Send some input to generate output that will be buffered
-    ws1.send(JSON.stringify(createMessage(MessageType.TERMINAL_INPUT, {
-      sessionId: 'sess-persist',
-      data: 'hello\r',
-    })));
+    ws1.send(
+      JSON.stringify(
+        createMessage(MessageType.TERMINAL_INPUT, {
+          sessionId: 'sess-persist',
+          data: 'hello\r',
+        })
+      )
+    );
     // Wait for output to be produced
     await waitForMessage(ws1, MessageType.TERMINAL_OUTPUT);
 
     // Disconnect first client
     ws1.close();
-    await new Promise(r => setTimeout(r, 100));
+    await new Promise((r) => setTimeout(r, 100));
 
     // Connect new client and attach
     const ws2 = await connectClient(testPort);
     clients.push(ws2);
 
     const attachedPromise = waitForMessage(ws2, MessageType.TERMINAL_ATTACHED);
-    ws2.send(JSON.stringify(createMessage(MessageType.TERMINAL_ATTACH, {
-      sessionId: 'sess-persist',
-      cols: 80,
-      rows: 24,
-    })));
+    ws2.send(
+      JSON.stringify(
+        createMessage(MessageType.TERMINAL_ATTACH, {
+          sessionId: 'sess-persist',
+          cols: 80,
+          rows: 24,
+        })
+      )
+    );
 
     const attached = await attachedPromise;
     expect(attached.type).toBe(MessageType.TERMINAL_ATTACHED);
@@ -240,11 +276,15 @@ describe('VPWebSocketServer', () => {
     clients.push(ws);
 
     const responsePromise = waitForMessage(ws, MessageType.TERMINAL_DESTROYED);
-    ws.send(JSON.stringify(createMessage(MessageType.TERMINAL_ATTACH, {
-      sessionId: 'no-such-session',
-      cols: 80,
-      rows: 24,
-    })));
+    ws.send(
+      JSON.stringify(
+        createMessage(MessageType.TERMINAL_ATTACH, {
+          sessionId: 'no-such-session',
+          cols: 80,
+          rows: 24,
+        })
+      )
+    );
 
     const response = await responsePromise;
     expect(response.type).toBe(MessageType.TERMINAL_DESTROYED);

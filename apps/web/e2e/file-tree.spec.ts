@@ -6,9 +6,7 @@ test.describe('File Tree', () => {
     await page.waitForTimeout(2000); // Wait for WebSocket connection
 
     // Look for file tree container (common selectors)
-    const fileTree = page.locator(
-      '[data-testid="file-tree"], [class*="file-tree"], aside, nav',
-    );
+    const fileTree = page.locator('[data-testid="file-tree"], [class*="file-tree"], aside, nav');
     await expect(fileTree.first()).toBeVisible({ timeout: 10000 });
   });
 
@@ -69,9 +67,7 @@ test.describe('File Tree', () => {
     const fileItem = page
       .locator('[role="treeitem"]')
       .filter({
-        has: page.locator(
-          '[class*="file-icon"]:not([class*="folder"]), [data-type="file"]',
-        ),
+        has: page.locator('[class*="file-icon"]:not([class*="folder"]), [data-type="file"]'),
       })
       .first();
 
@@ -84,9 +80,7 @@ test.describe('File Tree', () => {
       await expect(monacoEditor.first()).toBeVisible({ timeout: 10000 });
 
       // Editor tab should be created
-      const editorTab = page
-        .locator('[role="tab"], [data-testid*="editor-tab"]')
-        .first();
+      const editorTab = page.locator('[role="tab"], [data-testid*="editor-tab"]').first();
       if (await editorTab.isVisible()) {
         await expect(editorTab).toBeVisible();
       }
@@ -98,9 +92,7 @@ test.describe('File Tree', () => {
     await page.waitForTimeout(2000);
 
     // Look for search input in file tree
-    const searchInput = page
-      .locator('input[type="text"], input[placeholder*="search" i]')
-      .first();
+    const searchInput = page.locator('input[type="text"], input[placeholder*="search" i]').first();
 
     if (await searchInput.isVisible()) {
       // Type a search query
@@ -132,9 +124,7 @@ test.describe('File Tree', () => {
         .first();
 
       if (await expandableDir.isVisible()) {
-        const expandButton = expandableDir
-          .locator('button, [class*="chevron"]')
-          .first();
+        const expandButton = expandableDir.locator('button, [class*="chevron"]').first();
         await expandButton.click();
         await page.waitForTimeout(500);
       } else {
@@ -143,9 +133,7 @@ test.describe('File Tree', () => {
     }
 
     // Should still have file tree visible
-    const fileTree = page.locator(
-      '[data-testid="file-tree"], [class*="file-tree"], aside',
-    );
+    const fileTree = page.locator('[data-testid="file-tree"], [class*="file-tree"], aside');
     await expect(fileTree.first()).toBeVisible();
   });
 });

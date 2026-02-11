@@ -19,10 +19,7 @@ export class SessionPersistenceManager {
   private timeoutMs: number;
   private onExpire?: (sessionId: string) => void;
 
-  constructor(
-    ptyManager: PtyManager,
-    options: SessionPersistenceOptions = {}
-  ) {
+  constructor(ptyManager: PtyManager, options: SessionPersistenceOptions = {}) {
     this.ptyManager = ptyManager;
     this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }

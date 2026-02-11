@@ -15,7 +15,10 @@ const CHUNK_SIZE = 63 * 1024; // 63KB (divisible by 3)
 
 // File types Claude Code can process
 const SUPPORTED_TYPES = new Set([
-  'image/png', 'image/jpeg', 'image/gif', 'image/webp',
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
   'application/pdf',
 ]);
 
@@ -23,8 +26,14 @@ function isSupported(file: File): boolean {
   if (SUPPORTED_TYPES.has(file.type)) return true;
   // Fallback: check extension for files with missing MIME
   const ext = file.name.split('.').pop()?.toLowerCase();
-  return ext === 'pdf' || ext === 'png' || ext === 'jpg' || ext === 'jpeg'
-    || ext === 'gif' || ext === 'webp';
+  return (
+    ext === 'pdf' ||
+    ext === 'png' ||
+    ext === 'jpg' ||
+    ext === 'jpeg' ||
+    ext === 'gif' ||
+    ext === 'webp'
+  );
 }
 
 export function ImageDropZone({ children }: ImageDropZoneProps) {

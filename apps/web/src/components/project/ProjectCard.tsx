@@ -70,10 +70,7 @@ export function ProjectCard({
       {project.tags && project.tags.length > 0 && (
         <div className="flex flex-wrap gap-1 mt-3">
           {project.tags.map((tag) => (
-            <span
-              key={tag}
-              className="px-2 py-1 text-xs rounded bg-zinc-800 text-zinc-400"
-            >
+            <span key={tag} className="px-2 py-1 text-xs rounded bg-zinc-800 text-zinc-400">
               {tag}
             </span>
           ))}
@@ -83,11 +80,7 @@ export function ProjectCard({
       {/* 选中指示器 */}
       {selected && (
         <div className="absolute top-3 right-3">
-          <svg
-            className="w-6 h-6 text-blue-500"
-            fill="currentColor"
-            viewBox="0 0 20 20"
-          >
+          <svg className="w-6 h-6 text-blue-500" fill="currentColor" viewBox="0 0 20 20">
             <path
               fillRule="evenodd"
               d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"

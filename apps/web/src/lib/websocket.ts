@@ -1,4 +1,9 @@
-import { parseMessage, createMessage, type VPMessage, type MessageTypeValue } from '@vibepilot/protocol';
+import {
+  parseMessage,
+  createMessage,
+  type VPMessage,
+  type MessageTypeValue,
+} from '@vibepilot/protocol';
 
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected';
 export type MessageHandler = (msg: VPMessage) => void;
@@ -21,7 +26,10 @@ export class VPWebSocketClient {
 
   connect(url: string, onStateChange?: (state: ConnectionState) => void): void {
     // Guard against duplicate connections
-    if (this.ws && (this.ws.readyState === WebSocket.CONNECTING || this.ws.readyState === WebSocket.OPEN)) {
+    if (
+      this.ws &&
+      (this.ws.readyState === WebSocket.CONNECTING || this.ws.readyState === WebSocket.OPEN)
+    ) {
       // Update callback even when reusing existing connection
       this.onStateChange = onStateChange;
       return;
@@ -57,10 +65,7 @@ export class VPWebSocketClient {
     }
   }
 
-  send<T extends MessageTypeValue>(
-    type: T,
-    payload: any
-  ): void {
+  send<T extends MessageTypeValue>(type: T, payload: any): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       console.log('[WS] Send failed - not connected, type:', type);
       throw new Error('WebSocket not connected');

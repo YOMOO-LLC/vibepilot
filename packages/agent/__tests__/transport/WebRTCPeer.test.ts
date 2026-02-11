@@ -94,10 +94,7 @@ describe('WebRTCPeer', () => {
 
   it('addIceCandidate with sdpMid and sdpMLineIndex does not throw', () => {
     expect(() => {
-      peer.addIceCandidate(
-        'candidate:1 1 UDP 2130706431 10.0.0.1 5000 typ host',
-        '0'
-      );
+      peer.addIceCandidate('candidate:1 1 UDP 2130706431 10.0.0.1 5000 typ host', '0');
     }).not.toThrow();
   });
 

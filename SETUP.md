@@ -12,6 +12,7 @@ pnpm install
 ```
 
 This will install:
+
 - ESLint + TypeScript ESLint plugins
 - Prettier
 - husky (Git hooks)
@@ -67,6 +68,7 @@ git commit -m "test: verify pre-commit hook"
 Expected: lint-staged runs ESLint and Prettier on staged files.
 
 **Note:** Revert the test change after verification:
+
 ```bash
 git reset HEAD packages/protocol/src/index.ts
 git checkout packages/protocol/src/index.ts
@@ -85,11 +87,11 @@ pnpm format
 
 The following thresholds are now enforced:
 
-| Package | Lines | Functions | Branches | Statements |
-|---------|-------|-----------|----------|------------|
-| protocol | 90% | 90% | 85% | 90% |
-| agent | 75% | 75% | 70% | 75% |
-| web | 70% | 70% | 65% | 70% |
+| Package  | Lines | Functions | Branches | Statements |
+| -------- | ----- | --------- | -------- | ---------- |
+| protocol | 90%   | 90%       | 85%      | 90%        |
+| agent    | 75%   | 75%       | 70%      | 75%        |
+| web      | 70%   | 70%       | 65%      | 70%        |
 
 If tests fail to meet these thresholds, the build will fail.
 
@@ -101,6 +103,7 @@ The CI workflows are now configured but won't run until you:
 2. Create a pull request
 
 The workflows will automatically:
+
 - Run tests on Node 20.x and 22.x
 - Check linting
 - Type check (build all packages)
@@ -156,6 +159,7 @@ pnpm test:coverage
 ## Next Steps
 
 After Phase 2 is complete, you can proceed to Phase 3 (Production Polish) which includes:
+
 - React Error Boundaries
 - Dockerfile + docker-compose
 - E2E tests

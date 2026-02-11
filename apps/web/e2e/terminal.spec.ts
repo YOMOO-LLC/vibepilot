@@ -6,7 +6,10 @@ test.describe('Terminal', () => {
     await page.waitForTimeout(2000); // Wait for WebSocket connection
 
     // Look for the new tab button (assuming there's a "+" or "New" button)
-    const newTabButton = page.locator('button').filter({ hasText: /\+|New/i }).first();
+    const newTabButton = page
+      .locator('button')
+      .filter({ hasText: /\+|New/i })
+      .first();
 
     if (await newTabButton.isVisible()) {
       await newTabButton.click();
@@ -36,7 +39,10 @@ test.describe('Terminal', () => {
       .locator('button')
       .filter({ hasText: /terminal/i })
       .first();
-    const editorButton = page.locator('button').filter({ hasText: /editor/i }).first();
+    const editorButton = page
+      .locator('button')
+      .filter({ hasText: /editor/i })
+      .first();
 
     if ((await terminalButton.isVisible()) && (await editorButton.isVisible())) {
       // Click terminal button
@@ -51,9 +57,7 @@ test.describe('Terminal', () => {
       await page.waitForTimeout(500);
 
       // Monaco editor should be visible
-      await expect(
-        page.locator('.monaco-editor, [class*="monaco"]').first(),
-      ).toBeVisible();
+      await expect(page.locator('.monaco-editor, [class*="monaco"]').first()).toBeVisible();
     }
   });
 
@@ -84,9 +88,7 @@ test.describe('Terminal', () => {
       .first();
 
     if (await closeButton.isVisible()) {
-      const initialTabCount = await page
-        .locator('[role="tab"], [data-testid*="tab"]')
-        .count();
+      const initialTabCount = await page.locator('[role="tab"], [data-testid*="tab"]').count();
 
       await closeButton.click();
       await page.waitForTimeout(500);

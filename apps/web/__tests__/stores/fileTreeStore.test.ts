@@ -18,7 +18,7 @@ vi.mock('@/lib/transport', () => {
     _trigger: (type: string, payload: any) => {
       const typeHandlers = handlers.get(type);
       if (typeHandlers) {
-        typeHandlers.forEach(handler => handler({ type, payload }));
+        typeHandlers.forEach((handler) => handler({ type, payload }));
       }
     },
     _clear: () => {

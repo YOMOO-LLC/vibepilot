@@ -19,7 +19,10 @@ export function TerminalSplitLayout() {
 
   if (tabs.length === 0) {
     return (
-      <div className="flex items-center justify-center h-full text-zinc-500" data-testid="empty-state">
+      <div
+        className="flex items-center justify-center h-full text-zinc-500"
+        data-testid="empty-state"
+      >
         No terminals open. Press Ctrl+Shift+T or click + to create one.
       </div>
     );

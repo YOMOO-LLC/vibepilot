@@ -12,15 +12,16 @@ export function EditorPanel() {
 
   if (!activeTab) {
     return (
-      <div className="flex items-center justify-center h-full text-zinc-500">
-        No file open
-      </div>
+      <div className="flex items-center justify-center h-full text-zinc-500">No file open</div>
     );
   }
 
   if (activeTab.loading) {
     return (
-      <div className="flex items-center justify-center h-full text-zinc-500" data-testid="editor-loading">
+      <div
+        className="flex items-center justify-center h-full text-zinc-500"
+        data-testid="editor-loading"
+      >
         Loading...
       </div>
     );
@@ -28,7 +29,10 @@ export function EditorPanel() {
 
   if (activeTab.error) {
     return (
-      <div className="flex items-center justify-center h-full text-red-400" data-testid="editor-error">
+      <div
+        className="flex items-center justify-center h-full text-red-400"
+        data-testid="editor-error"
+      >
         Error: {activeTab.error}
       </div>
     );

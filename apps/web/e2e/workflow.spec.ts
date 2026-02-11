@@ -72,9 +72,7 @@ test.describe('Complete Workflow', () => {
       await page.waitForTimeout(1500);
 
       // 3. Note the file name from tab
-      const editorTab = page
-        .locator('[data-testid*="editor-tab"], [role="tab"]')
-        .first();
+      const editorTab = page.locator('[data-testid*="editor-tab"], [role="tab"]').first();
       const tabText = await editorTab.textContent();
 
       // 4. Refresh the page
@@ -165,10 +163,7 @@ test.describe('Complete Workflow', () => {
 
     // Should not have critical errors (some warnings are acceptable)
     const criticalErrors = errors.filter(
-      (e) =>
-        !e.includes('Warning') &&
-        !e.includes('DevTools') &&
-        !e.includes('Extension'),
+      (e) => !e.includes('Warning') && !e.includes('DevTools') && !e.includes('Extension')
     );
     expect(criticalErrors.length).toBe(0);
   });
@@ -178,9 +173,7 @@ test.describe('Complete Workflow', () => {
     await page.waitForTimeout(2000);
 
     // Expand multiple directories rapidly
-    const expandButtons = page
-      .locator('[role="treeitem"] button, [class*="chevron"]')
-      .first();
+    const expandButtons = page.locator('[role="treeitem"] button, [class*="chevron"]').first();
 
     for (let i = 0; i < 5; i++) {
       if (await expandButtons.isVisible()) {

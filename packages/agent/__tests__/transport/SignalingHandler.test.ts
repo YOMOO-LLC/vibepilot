@@ -69,11 +69,7 @@ describe('SignalingHandler', () => {
     handler.setSendFunction(persistentSend);
 
     // Simulate the peer emitting a local ICE candidate
-    mockPeer.emit(
-      'candidate',
-      'candidate:2 1 UDP 1694498815 192.168.1.1 5001 typ srflx',
-      '0'
-    );
+    mockPeer.emit('candidate', 'candidate:2 1 UDP 1694498815 192.168.1.1 5001 typ srflx', '0');
 
     expect(persistentSend).toHaveBeenCalled();
     const sentMsg = persistentSend.mock.calls[0][0];

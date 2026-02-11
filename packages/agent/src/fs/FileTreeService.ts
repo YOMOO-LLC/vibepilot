@@ -57,11 +57,7 @@ export class FileTreeService {
       // Recursively list children if it's a directory and we haven't reached max depth
       if (type === 'directory' && currentDepth < depth - 1) {
         try {
-          node.children = await this.listRecursive(
-            fullPath,
-            depth,
-            currentDepth + 1
-          );
+          node.children = await this.listRecursive(fullPath, depth, currentDepth + 1);
         } catch (error) {
           // Skip directories we can't read (permission issues, etc.)
           continue;

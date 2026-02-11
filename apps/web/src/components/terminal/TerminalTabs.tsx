@@ -3,11 +3,13 @@
 import { useTerminalStore } from '@/stores/terminalStore';
 
 export function TerminalTabs() {
-  const { tabs, activeTabId, createTab, closeTab, setActiveTab } =
-    useTerminalStore();
+  const { tabs, activeTabId, createTab, closeTab, setActiveTab } = useTerminalStore();
 
   return (
-    <div className="flex items-center bg-zinc-900 border-b border-zinc-800 h-9 overflow-x-auto" data-testid="terminal-tabs">
+    <div
+      className="flex items-center bg-zinc-900 border-b border-zinc-800 h-9 overflow-x-auto"
+      data-testid="terminal-tabs"
+    >
       {tabs.map((tab) => (
         <div
           key={tab.id}

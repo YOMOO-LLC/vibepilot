@@ -186,7 +186,7 @@ describe('ImageDropZone', () => {
       },
     });
 
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise((resolve) => setTimeout(resolve, 50));
     expect(mockTransport.send).not.toHaveBeenCalled();
   });
 

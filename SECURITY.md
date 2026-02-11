@@ -25,6 +25,7 @@ Instead, please report them via one of the following methods:
 Send an email to: **security@your-domain.com** (replace with your actual email)
 
 Include the following information:
+
 - Description of the vulnerability
 - Steps to reproduce
 - Potential impact
@@ -38,12 +39,12 @@ Include the following information:
 
 ## Severity Levels
 
-| Severity | Description | Response Time |
-|----------|-------------|---------------|
-| **Critical** | Remote code execution, authentication bypass | 24-48 hours |
-| **High** | Privilege escalation, significant data exposure | 3-7 days |
-| **Medium** | XSS, CSRF, information disclosure | 7-14 days |
-| **Low** | Non-exploitable issues, best practice violations | 14-30 days |
+| Severity     | Description                                      | Response Time |
+| ------------ | ------------------------------------------------ | ------------- |
+| **Critical** | Remote code execution, authentication bypass     | 24-48 hours   |
+| **High**     | Privilege escalation, significant data exposure  | 3-7 days      |
+| **Medium**   | XSS, CSRF, information disclosure                | 7-14 days     |
+| **Low**      | Non-exploitable issues, best practice violations | 14-30 days    |
 
 ## Disclosure Policy
 
@@ -188,6 +189,7 @@ We currently do not have a formal bug bounty program. However, we greatly apprec
 ## Contact
 
 For non-security-related questions, please use:
+
 - **GitHub Issues:** For bug reports
 - **GitHub Discussions:** For questions and feature requests
 

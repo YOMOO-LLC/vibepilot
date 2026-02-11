@@ -28,14 +28,14 @@ NODE_ENV=production
 
 Available log levels in order of severity:
 
-| Level | Description | Use Case |
-|-------|-------------|----------|
-| `trace` | Very detailed debugging | Rare, for deep debugging only |
-| `debug` | Detailed debugging information | Development, troubleshooting |
-| `info` | General informational messages | Normal operations |
-| `warn` | Warning messages | Non-critical issues |
-| `error` | Error messages | Recoverable errors |
-| `fatal` | Fatal errors | Unrecoverable errors |
+| Level   | Description                    | Use Case                      |
+| ------- | ------------------------------ | ----------------------------- |
+| `trace` | Very detailed debugging        | Rare, for deep debugging only |
+| `debug` | Detailed debugging information | Development, troubleshooting  |
+| `info`  | General informational messages | Normal operations             |
+| `warn`  | Warning messages               | Non-critical issues           |
+| `error` | Error messages                 | Recoverable errors            |
+| `fatal` | Fatal errors                   | Unrecoverable errors          |
 
 ## Usage
 
@@ -71,11 +71,13 @@ logger.debug({ sessionId: 'abc123' }, 'PTY session created');
 #### 1. Use Structured Data
 
 **Good:**
+
 ```typescript
 logger.info({ userId, sessionId, duration: 1500 }, 'Session completed');
 ```
 
 **Avoid:**
+
 ```typescript
 logger.info(`Session ${sessionId} completed for user ${userId} in ${duration}ms`);
 ```
@@ -101,7 +103,7 @@ logger.error(
     operation: 'file:read',
     path: filePath,
   },
-  'File read operation failed',
+  'File read operation failed'
 );
 ```
 
@@ -147,12 +149,14 @@ logger.info({ username }, 'User login attempt');
 ### Viewing Logs
 
 **Development:**
+
 ```bash
 pnpm --filter agent dev
 # Colorized output to console
 ```
 
 **Production:**
+
 ```bash
 node packages/agent/dist/bin/vibepilot.js serve | pino-pretty
 # Pipe to pino-pretty for human-readable output
@@ -255,10 +259,7 @@ vi.mock('./utils/logger', () => ({
 }));
 
 // In test:
-expect(logger.info).toHaveBeenCalledWith(
-  { port: 9800 },
-  'Server started',
-);
+expect(logger.info).toHaveBeenCalledWith({ port: 9800 }, 'Server started');
 ```
 
 ## Resources
@@ -272,11 +273,11 @@ expect(logger.info).toHaveBeenCalledWith(
 
 When migrating existing code:
 
-| Old | New |
-|-----|-----|
-| `console.log(msg)` | `logger.info(msg)` |
+| Old                  | New                 |
+| -------------------- | ------------------- |
+| `console.log(msg)`   | `logger.info(msg)`  |
 | `console.error(msg)` | `logger.error(msg)` |
-| `console.warn(msg)` | `logger.warn(msg)` |
+| `console.warn(msg)`  | `logger.warn(msg)`  |
 | `console.debug(msg)` | `logger.debug(msg)` |
 
 Add structured data where appropriate:

@@ -24,14 +24,17 @@ export function FileTreePanel() {
   const openFile = useEditorStore((s) => s.openFile);
   const setActivePane = useWorkspaceStore((s) => s.setActivePane);
 
-  const handleFileClick = useCallback((filePath: string) => {
-    openFile(filePath);
-    // After opening, the new tab will be the active one in editorStore
-    const editorState = useEditorStore.getState();
-    if (editorState.activeTabId) {
-      setActivePane({ kind: 'editor', id: editorState.activeTabId });
-    }
-  }, [openFile, setActivePane]);
+  const handleFileClick = useCallback(
+    (filePath: string) => {
+      openFile(filePath);
+      // After opening, the new tab will be the active one in editorStore
+      const editorState = useEditorStore.getState();
+      if (editorState.activeTabId) {
+        setActivePane({ kind: 'editor', id: editorState.activeTabId });
+      }
+    },
+    [openFile, setActivePane]
+  );
 
   const rootEntries = childrenMap[rootPath] || [];
 

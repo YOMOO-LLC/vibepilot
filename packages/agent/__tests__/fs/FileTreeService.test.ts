@@ -96,13 +96,13 @@ describe('FileTreeService', () => {
     });
 
     it('prevents path traversal with ../', async () => {
-      await expect(
-        service.list('/test/root/../../../etc', 1)
-      ).rejects.toThrow('Path traversal not allowed');
+      await expect(service.list('/test/root/../../../etc', 1)).rejects.toThrow(
+        'Path traversal not allowed'
+      );
 
-      await expect(
-        service.list('/test/root/subdir/../../outside', 1)
-      ).rejects.toThrow('Path traversal not allowed');
+      await expect(service.list('/test/root/subdir/../../outside', 1)).rejects.toThrow(
+        'Path traversal not allowed'
+      );
     });
 
     it('supports depth parameter for recursive listing', async () => {
@@ -116,9 +116,7 @@ describe('FileTreeService', () => {
         { name: 'subdir', isDirectory: () => true, isFile: () => false },
       ];
 
-      const mockSubdirEntries = [
-        { name: 'deep.ts', isDirectory: () => false, isFile: () => true },
-      ];
+      const mockSubdirEntries = [{ name: 'deep.ts', isDirectory: () => false, isFile: () => true }];
 
       mockFs.readdir
         .mockResolvedValueOnce(mockRootEntries as any)

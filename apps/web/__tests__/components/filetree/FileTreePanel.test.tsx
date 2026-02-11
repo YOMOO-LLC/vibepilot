@@ -15,9 +15,12 @@ vi.mock('@/stores/terminalStore', () => ({
 }));
 
 vi.mock('@/stores/editorStore', () => ({
-  useEditorStore: Object.assign(vi.fn(() => vi.fn()), {
-    getState: vi.fn(() => ({ activeTabId: null })),
-  }),
+  useEditorStore: Object.assign(
+    vi.fn(() => vi.fn()),
+    {
+      getState: vi.fn(() => ({ activeTabId: null })),
+    }
+  ),
 }));
 
 vi.mock('@/stores/workspaceStore', () => ({
@@ -27,7 +30,8 @@ vi.mock('@/stores/workspaceStore', () => ({
 // Mock file icons
 vi.mock('@/lib/fileIcons', () => ({
   getFileIconUrl: (name: string) => `/icons/${name}.svg`,
-  getFolderIconUrl: (name: string, isOpen: boolean) => `/icons/folder-${isOpen ? 'open' : 'closed'}-${name}.svg`,
+  getFolderIconUrl: (name: string, isOpen: boolean) =>
+    `/icons/folder-${isOpen ? 'open' : 'closed'}-${name}.svg`,
 }));
 
 describe('FileTreePanel', () => {
@@ -77,9 +81,7 @@ describe('FileTreePanel', () => {
   });
 
   it('clicking directory toggles expand', () => {
-    const mockEntries: FileNode[] = [
-      { name: 'dir1', path: '/test/dir1', type: 'directory' },
-    ];
+    const mockEntries: FileNode[] = [{ name: 'dir1', path: '/test/dir1', type: 'directory' }];
 
     setupFileTreeStore({
       childrenMap: { '/test': mockEntries },
@@ -95,9 +97,7 @@ describe('FileTreePanel', () => {
   });
 
   it('shows file icon for files', () => {
-    const mockEntries: FileNode[] = [
-      { name: 'test.txt', path: '/test/test.txt', type: 'file' },
-    ];
+    const mockEntries: FileNode[] = [{ name: 'test.txt', path: '/test/test.txt', type: 'file' }];
 
     setupFileTreeStore({
       childrenMap: { '/test': mockEntries },
@@ -110,9 +110,7 @@ describe('FileTreePanel', () => {
   });
 
   it('shows directory icon for directories', () => {
-    const mockEntries: FileNode[] = [
-      { name: 'testdir', path: '/test/testdir', type: 'directory' },
-    ];
+    const mockEntries: FileNode[] = [{ name: 'testdir', path: '/test/testdir', type: 'directory' }];
 
     setupFileTreeStore({
       childrenMap: { '/test': mockEntries },
@@ -132,9 +130,7 @@ describe('FileTreePanel', () => {
   });
 
   it('renders nested children when directory is expanded', () => {
-    const rootEntries: FileNode[] = [
-      { name: 'dir1', path: '/test/dir1', type: 'directory' },
-    ];
+    const rootEntries: FileNode[] = [{ name: 'dir1', path: '/test/dir1', type: 'directory' }];
     const childEntries: FileNode[] = [
       { name: 'nested.txt', path: '/test/dir1/nested.txt', type: 'file' },
     ];
@@ -155,9 +151,7 @@ describe('FileTreePanel', () => {
   });
 
   it('hides children when directory is not expanded', () => {
-    const rootEntries: FileNode[] = [
-      { name: 'dir1', path: '/test/dir1', type: 'directory' },
-    ];
+    const rootEntries: FileNode[] = [{ name: 'dir1', path: '/test/dir1', type: 'directory' }];
     const childEntries: FileNode[] = [
       { name: 'nested.txt', path: '/test/dir1/nested.txt', type: 'file' },
     ];

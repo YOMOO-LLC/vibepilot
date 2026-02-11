@@ -6,7 +6,10 @@ test.describe('Editor', () => {
     await page.waitForTimeout(2000);
 
     // Switch to editor pane if needed
-    const editorButton = page.locator('button').filter({ hasText: /editor/i }).first();
+    const editorButton = page
+      .locator('button')
+      .filter({ hasText: /editor/i })
+      .first();
     if (await editorButton.isVisible()) {
       await editorButton.click();
       await page.waitForTimeout(500);
@@ -25,9 +28,7 @@ test.describe('Editor', () => {
     const fileItem = page
       .locator('[role="treeitem"]')
       .filter({
-        has: page.locator(
-          '[class*="file-icon"]:not([class*="folder"]), [data-type="file"]',
-        ),
+        has: page.locator('[class*="file-icon"]:not([class*="folder"]), [data-type="file"]'),
       })
       .first();
 
@@ -142,9 +143,7 @@ test.describe('Editor', () => {
         await closeButton.click();
         await page.waitForTimeout(500);
 
-        const newTabCount = await page
-          .locator('[data-testid*="editor-tab"], [role="tab"]')
-          .count();
+        const newTabCount = await page.locator('[data-testid*="editor-tab"], [role="tab"]').count();
         expect(newTabCount).toBeLessThanOrEqual(initialTabCount);
       }
     }
@@ -208,10 +207,7 @@ test.describe('Editor', () => {
       await page.waitForTimeout(1000);
 
       // Get initial content
-      const initialContent = await page
-        .locator('.monaco-editor .view-lines')
-        .first()
-        .textContent();
+      const initialContent = await page.locator('.monaco-editor .view-lines').first().textContent();
 
       // Open second file
       const secondFile = page
@@ -230,10 +226,7 @@ test.describe('Editor', () => {
           await page.waitForTimeout(500);
 
           // Content should be the same
-          const newContent = await page
-            .locator('.monaco-editor .view-lines')
-            .first()
-            .textContent();
+          const newContent = await page.locator('.monaco-editor .view-lines').first().textContent();
           expect(newContent).toBe(initialContent);
         }
       }

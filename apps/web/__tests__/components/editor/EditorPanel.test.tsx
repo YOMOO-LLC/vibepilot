@@ -20,9 +20,7 @@ vi.mock('@/lib/transport', () => {
 
 // Mock Monaco Editor
 vi.mock('@monaco-editor/react', () => ({
-  default: ({ value }: { value: string }) => (
-    <div data-testid="mock-monaco">{value}</div>
-  ),
+  default: ({ value }: { value: string }) => <div data-testid="mock-monaco">{value}</div>,
 }));
 
 describe('EditorPanel', () => {

@@ -17,11 +17,14 @@ interface PersistedState {
 
 function saveToSessionStorage(state: PersistedState): void {
   try {
-    sessionStorage.setItem('vp-terminal-sessions', JSON.stringify({
-      tabs: state.tabs,
-      activeTabId: state.activeTabId,
-      counter: state.counter,
-    }));
+    sessionStorage.setItem(
+      'vp-terminal-sessions',
+      JSON.stringify({
+        tabs: state.tabs,
+        activeTabId: state.activeTabId,
+        counter: state.counter,
+      })
+    );
   } catch {
     // sessionStorage not available, silently ignore
   }
@@ -139,9 +142,7 @@ export const useTerminalStore = create<TerminalStore>((set, get) => ({
 
   clearNeedsAttach: (id: string) => {
     set((state) => ({
-      tabs: state.tabs.map((t) =>
-        t.id === id ? { ...t, needsAttach: false } : t
-      ),
+      tabs: state.tabs.map((t) => (t.id === id ? { ...t, needsAttach: false } : t)),
     }));
   },
 

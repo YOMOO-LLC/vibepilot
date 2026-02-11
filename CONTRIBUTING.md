@@ -56,6 +56,7 @@ pnpm test
 ### Running the Development Environment
 
 **Option 1: Run all packages simultaneously**
+
 ```bash
 pnpm dev
 ```
@@ -63,18 +64,21 @@ pnpm dev
 **Option 2: Run packages individually (recommended for debugging)**
 
 Terminal 1 — Agent:
+
 ```bash
 pnpm --filter agent dev
 # Starts on ws://localhost:9800
 ```
 
 Terminal 2 — Web:
+
 ```bash
 pnpm --filter web dev
 # Starts on http://localhost:3000
 ```
 
 Terminal 3 — Signaling Server (optional, for WebRTC):
+
 ```bash
 pnpm --filter signaling-server dev
 # Starts on ws://localhost:9801
@@ -161,6 +165,7 @@ Fix any linting errors before committing.
 - **Avoid any** — Use `unknown` if type is truly unknown
 
 #### Example:
+
 ```typescript
 // ✅ Good
 export function calculateTotal(items: Item[]): number {
@@ -246,6 +251,7 @@ export function MyComponent({ sessionId }: Props) {
 ### Writing Tests
 
 **Protocol tests:**
+
 ```typescript
 import { describe, it, expect } from 'vitest';
 import { createMessage, MessageType } from '../src/index.js';
@@ -264,6 +270,7 @@ describe('createMessage', () => {
 ```
 
 **Agent tests with mocks:**
+
 ```typescript
 import { describe, it, expect, vi } from 'vitest';
 import { PtyManager } from '../../src/pty/PtyManager.js';
@@ -282,6 +289,7 @@ describe('PtyManager', () => {
 ```
 
 **React component tests:**
+
 ```typescript
 import { render, screen } from '@testing-library/react';
 import { TerminalTabs } from '@/components/terminal/TerminalTabs';
@@ -297,11 +305,13 @@ describe('TerminalTabs', () => {
 ### Test Coverage
 
 Aim for:
+
 - **Protocol:** 100% (it's small and critical)
 - **Agent:** ≥80%
 - **Web:** ≥70%
 
 Check coverage:
+
 ```bash
 pnpm test -- --coverage
 ```
@@ -321,6 +331,7 @@ We follow **Conventional Commits** specification:
 ```
 
 #### Types:
+
 - `feat:` — New feature
 - `fix:` — Bug fix
 - `docs:` — Documentation changes
@@ -376,6 +387,7 @@ docs: update README with WebRTC setup instructions
 ### Creating a Pull Request
 
 1. **Push your branch** to your fork:
+
    ```bash
    git push origin feature/your-feature-name
    ```
@@ -389,6 +401,7 @@ docs: update README with WebRTC setup instructions
 ### PR Title Format
 
 Same as commit messages:
+
 ```
 feat(web): add keyboard shortcuts for tab navigation
 ```
@@ -397,21 +410,26 @@ feat(web): add keyboard shortcuts for tab navigation
 
 ```markdown
 ## Description
+
 Brief description of changes.
 
 ## Type of Change
+
 - [ ] Bug fix
 - [ ] New feature
 - [ ] Breaking change
 - [ ] Documentation update
 
 ## Testing
+
 Describe how you tested your changes.
 
 ## Screenshots (if applicable)
+
 Add screenshots for UI changes.
 
 ## Checklist
+
 - [ ] Tests pass locally
 - [ ] Added/updated tests
 - [ ] Updated documentation
@@ -430,6 +448,7 @@ Add screenshots for UI changes.
 ### Creating Issues
 
 Use the appropriate template:
+
 - **Bug Report** — For reporting bugs
 - **Feature Request** — For suggesting new features
 
@@ -461,12 +480,14 @@ Use the appropriate template:
 ### Debugging
 
 **Agent debugging:**
+
 ```bash
 # Enable verbose logging
 DEBUG=* pnpm --filter agent dev
 ```
 
 **Web debugging:**
+
 - Use React DevTools
 - Check browser console for logs
 - WebSocket messages are logged with `[WS]` prefix
@@ -488,6 +509,7 @@ When modifying `@vibepilot/protocol`:
 ### Database/State Reset
 
 If terminal state gets corrupted:
+
 ```bash
 # Clear sessionStorage (in browser console)
 sessionStorage.clear();

@@ -50,150 +50,146 @@ export const useEditorStore = create<EditorStore>((set, get) => {
   });
 
   return {
-  tabs: [],
-  activeTabId: null,
-  counter: 0,
+    tabs: [],
+    activeTabId: null,
+    counter: 0,
 
-  openFile: (filePath: string) => {
-    const { tabs } = get();
-    // If file is already open, activate it
-    const existing = tabs.find((t) => t.filePath === filePath);
-    if (existing) {
-      set({ activeTabId: existing.id });
-      return;
-    }
-
-    editorCounter++;
-    const id = `editor-${Date.now()}-${editorCounter}`;
-    const fileName = filePath.split('/').pop() || filePath;
-
-    const tab: EditorTab = {
-      id,
-      filePath,
-      fileName,
-      content: '',
-      originalContent: '',
-      language: '',
-      mimeType: '',
-      encoding: 'utf-8',
-      size: 0,
-      readonly: false,
-      loading: true,
-      error: null,
-    };
-
-    set((state) => ({
-      tabs: [...state.tabs, tab],
-      activeTabId: id,
-      counter: state.counter + 1,
-    }));
-
-    // Request file content from agent
-    transportManager.send(MessageType.FILE_READ, { filePath });
-  },
-
-  closeFile: (id: string) => {
-    set((state) => {
-      const idx = state.tabs.findIndex((t) => t.id === id);
-      const newTabs = state.tabs.filter((t) => t.id !== id);
-
-      let newActive = state.activeTabId;
-      if (state.activeTabId === id) {
-        if (newTabs.length === 0) {
-          newActive = null;
-        } else if (idx >= newTabs.length) {
-          newActive = newTabs[newTabs.length - 1].id;
-        } else {
-          newActive = newTabs[idx].id;
-        }
+    openFile: (filePath: string) => {
+      const { tabs } = get();
+      // If file is already open, activate it
+      const existing = tabs.find((t) => t.filePath === filePath);
+      if (existing) {
+        set({ activeTabId: existing.id });
+        return;
       }
 
-      return { tabs: newTabs, activeTabId: newActive };
-    });
-  },
+      editorCounter++;
+      const id = `editor-${Date.now()}-${editorCounter}`;
+      const fileName = filePath.split('/').pop() || filePath;
 
-  setActiveEditorTab: (id: string) => {
-    set({ activeTabId: id });
-  },
+      const tab: EditorTab = {
+        id,
+        filePath,
+        fileName,
+        content: '',
+        originalContent: '',
+        language: '',
+        mimeType: '',
+        encoding: 'utf-8',
+        size: 0,
+        readonly: false,
+        loading: true,
+        error: null,
+      };
 
-  updateContent: (id: string, content: string) => {
-    set((state) => ({
-      tabs: state.tabs.map((t) =>
-        t.id === id ? { ...t, content } : t
-      ),
-    }));
-  },
+      set((state) => ({
+        tabs: [...state.tabs, tab],
+        activeTabId: id,
+        counter: state.counter + 1,
+      }));
 
-  saveFile: (id: string) => {
-    const tab = get().tabs.find((t) => t.id === id);
-    if (!tab || tab.readonly) return;
+      // Request file content from agent
+      transportManager.send(MessageType.FILE_READ, { filePath });
+    },
 
-    transportManager.send(MessageType.FILE_WRITE, {
-      filePath: tab.filePath,
-      content: tab.content,
-      encoding: 'utf-8',
-    });
-  },
+    closeFile: (id: string) => {
+      set((state) => {
+        const idx = state.tabs.findIndex((t) => t.id === id);
+        const newTabs = state.tabs.filter((t) => t.id !== id);
 
-  isDirty: (id: string) => {
-    const tab = get().tabs.find((t) => t.id === id);
-    if (!tab) return false;
-    return tab.content !== tab.originalContent;
-  },
+        let newActive = state.activeTabId;
+        if (state.activeTabId === id) {
+          if (newTabs.length === 0) {
+            newActive = null;
+          } else if (idx >= newTabs.length) {
+            newActive = newTabs[newTabs.length - 1].id;
+          } else {
+            newActive = newTabs[idx].id;
+          }
+        }
 
-  handleFileData: (msg: VPMessage) => {
-    const payload = msg.payload as {
-      filePath: string;
-      content: string;
-      encoding: 'utf-8' | 'base64';
-      language: string;
-      mimeType: string;
-      size: number;
-      readonly: boolean;
-    };
+        return { tabs: newTabs, activeTabId: newActive };
+      });
+    },
 
-    set((state) => ({
-      tabs: state.tabs.map((t) =>
-        t.filePath === payload.filePath && t.loading
-          ? {
-              ...t,
-              content: payload.content,
-              originalContent: payload.content,
-              encoding: payload.encoding,
-              language: payload.language,
-              mimeType: payload.mimeType,
-              size: payload.size,
-              readonly: payload.readonly,
-              loading: false,
-              error: null,
-            }
-          : t
-      ),
-    }));
-  },
+    setActiveEditorTab: (id: string) => {
+      set({ activeTabId: id });
+    },
 
-  handleFileError: (msg: VPMessage) => {
-    const payload = msg.payload as { filePath: string; error: string };
+    updateContent: (id: string, content: string) => {
+      set((state) => ({
+        tabs: state.tabs.map((t) => (t.id === id ? { ...t, content } : t)),
+      }));
+    },
 
-    set((state) => ({
-      tabs: state.tabs.map((t) =>
-        t.filePath === payload.filePath
-          ? { ...t, loading: false, error: payload.error }
-          : t
-      ),
-    }));
-  },
+    saveFile: (id: string) => {
+      const tab = get().tabs.find((t) => t.id === id);
+      if (!tab || tab.readonly) return;
 
-  handleFileWritten: (msg: VPMessage) => {
-    const payload = msg.payload as { filePath: string; size: number };
+      transportManager.send(MessageType.FILE_WRITE, {
+        filePath: tab.filePath,
+        content: tab.content,
+        encoding: 'utf-8',
+      });
+    },
 
-    set((state) => ({
-      tabs: state.tabs.map((t) =>
-        t.filePath === payload.filePath
-          ? { ...t, originalContent: t.content, size: payload.size }
-          : t
-      ),
-    }));
-  },
-};
+    isDirty: (id: string) => {
+      const tab = get().tabs.find((t) => t.id === id);
+      if (!tab) return false;
+      return tab.content !== tab.originalContent;
+    },
+
+    handleFileData: (msg: VPMessage) => {
+      const payload = msg.payload as {
+        filePath: string;
+        content: string;
+        encoding: 'utf-8' | 'base64';
+        language: string;
+        mimeType: string;
+        size: number;
+        readonly: boolean;
+      };
+
+      set((state) => ({
+        tabs: state.tabs.map((t) =>
+          t.filePath === payload.filePath && t.loading
+            ? {
+                ...t,
+                content: payload.content,
+                originalContent: payload.content,
+                encoding: payload.encoding,
+                language: payload.language,
+                mimeType: payload.mimeType,
+                size: payload.size,
+                readonly: payload.readonly,
+                loading: false,
+                error: null,
+              }
+            : t
+        ),
+      }));
+    },
+
+    handleFileError: (msg: VPMessage) => {
+      const payload = msg.payload as { filePath: string; error: string };
+
+      set((state) => ({
+        tabs: state.tabs.map((t) =>
+          t.filePath === payload.filePath ? { ...t, loading: false, error: payload.error } : t
+        ),
+      }));
+    },
+
+    handleFileWritten: (msg: VPMessage) => {
+      const payload = msg.payload as { filePath: string; size: number };
+
+      set((state) => ({
+        tabs: state.tabs.map((t) =>
+          t.filePath === payload.filePath
+            ? { ...t, originalContent: t.content, size: payload.size }
+            : t
+        ),
+      }));
+    },
+  };
 });

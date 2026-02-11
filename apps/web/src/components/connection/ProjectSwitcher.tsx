@@ -25,9 +25,7 @@ export function ProjectSwitcher() {
         onClick={() => setOpen(!open)}
         className="flex items-center gap-2 px-3 py-1.5 text-sm rounded bg-zinc-800 hover:bg-zinc-700 transition-colors"
       >
-        <span className="text-zinc-400">
-          {currentProject ? currentProject.name : 'No project'}
-        </span>
+        <span className="text-zinc-400">{currentProject ? currentProject.name : 'No project'}</span>
         <svg
           className={`w-3 h-3 text-zinc-500 transition-transform ${open ? 'rotate-180' : ''}`}
           fill="none"

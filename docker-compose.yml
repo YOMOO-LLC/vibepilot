@@ -8,7 +8,7 @@ services:
       dockerfile: packages/agent/Dockerfile
     container_name: vibepilot-agent
     ports:
-      - "9800:9800"
+      - '9800:9800'
     environment:
       - PORT=9800
       - NODE_ENV=production
@@ -21,7 +21,13 @@ services:
     networks:
       - vibepilot-network
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:9800', (r) => process.exit(r.statusCode === 426 ? 0 : 1))"]
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('http').get('http://localhost:9800', (r) => process.exit(r.statusCode === 426 ? 0 : 1))",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -34,7 +40,7 @@ services:
       dockerfile: signaling-server/Dockerfile
     container_name: vibepilot-signaling
     ports:
-      - "9900:9900"
+      - '9900:9900'
     environment:
       - PORT=9900
       - NODE_ENV=production
@@ -42,7 +48,13 @@ services:
     networks:
       - vibepilot-network
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:9900', (r) => process.exit(r.statusCode === 426 ? 0 : 1))"]
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('http').get('http://localhost:9900', (r) => process.exit(r.statusCode === 426 ? 0 : 1))",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -55,7 +67,7 @@ services:
       dockerfile: apps/web/Dockerfile
     container_name: vibepilot-web
     ports:
-      - "3000:3000"
+      - '3000:3000'
     environment:
       - NODE_ENV=production
       - PORT=3000
@@ -70,7 +82,13 @@ services:
     networks:
       - vibepilot-network
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('http').get('http://localhost:3000', (r) => process.exit(r.statusCode === 200 ? 0 : 1))",
+        ]
       interval: 30s
       timeout: 10s
       retries: 3

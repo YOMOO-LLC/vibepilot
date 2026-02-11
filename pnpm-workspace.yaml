@@ -1,4 +1,4 @@
 packages:
-  - "packages/*"
-  - "apps/*"
-  - "signaling-server"
+  - 'packages/*'
+  - 'apps/*'
+  - 'signaling-server'
