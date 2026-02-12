@@ -39,8 +39,8 @@ pnpm --filter web test:e2e
 
 ```
 packages/protocol/   → @vibepilot/protocol  (shared message types, zero deps)
-packages/agent/      → @vibepilot/agent     (Node.js backend: PTY, FS, WebSocket, WebRTC)
-apps/web/            → @vibepilot/web       (Next.js 15 frontend: terminal, editor, file tree)
+packages/agent/      → @vibepilot/agent     (Node.js backend: PTY, FS, Browser, WebSocket, WebRTC)
+apps/web/            → @vibepilot/web       (Next.js 15 frontend: terminal, editor, browser preview, file tree)
 relay-server/        → message relay for NAT traversal (planned, not yet integrated)
 signaling-server/    → standalone WebRTC signaling relay
 ```
@@ -49,22 +49,24 @@ signaling-server/    → standalone WebRTC signaling relay
 
 - Message envelope: `VPMessage<T, P>` with `type`, `id`, `timestamp`, `payload`
 - `MessagePayloadMap` provides compile-time type safety for `createMessage(type, payload)`
-- Categories: Terminal (10), FileTree (3), FileContent (5), Image (4), Signal (3), Project (11) — 36 total
+- Categories: Terminal (10), FileTree (3), FileContent (5), Image (4), Signal (3), Project (11), Browser (12) — 48 total
 
 ## Agent Services (`packages/agent/src/`)
 
-| Service                   | Location     | Purpose                                            |
-| ------------------------- | ------------ | -------------------------------------------------- |
-| WebSocketServer           | `transport/` | Central message router, per-client `ClientState`   |
-| WebRTCPeer                | `transport/` | P2P data channels via `node-datachannel`           |
-| PtyManager                | `pty/`       | `node-pty` sessions, CWD polling                   |
-| SessionPersistenceManager | `pty/`       | Orphan/reclaim lifecycle, `CircularBuffer` replay  |
-| FileTreeService           | `fs/`        | Directory listing, ignore patterns                 |
-| FileContentService        | `fs/`        | File read/write, extension→language mapping        |
-| FileWatcher               | `fs/`        | chokidar-based change broadcast                    |
-| AuthProvider              | `auth/`      | Pluggable: TokenAuthProvider, SupabaseAuthProvider |
-| AgentRegistry             | `registry/`  | Pluggable: FileSystemRegistry, SupabaseRegistry    |
-| ProjectManager            | `config/`    | Multi-project management + path validation         |
+| Service                   | Location     | Purpose                                             |
+| ------------------------- | ------------ | --------------------------------------------------- |
+| WebSocketServer           | `transport/` | Central message router, per-client `ClientState`    |
+| WebRTCPeer                | `transport/` | P2P data channels via `node-datachannel`            |
+| PtyManager                | `pty/`       | `node-pty` sessions, CWD polling                    |
+| SessionPersistenceManager | `pty/`       | Orphan/reclaim lifecycle, `CircularBuffer` replay   |
+| FileTreeService           | `fs/`        | Directory listing, ignore patterns                  |
+| FileContentService        | `fs/`        | File read/write, extension→language mapping         |
+| FileWatcher               | `fs/`        | chokidar-based change broadcast                     |
+| BrowserService            | `browser/`   | Headless Chrome via CDP, screencast streaming       |
+| ConfigManager             | `config/`    | Persistent JSON config (`~/.vibepilot/config.json`) |
+| AuthProvider              | `auth/`      | Pluggable: TokenAuthProvider, SupabaseAuthProvider  |
+| AgentRegistry             | `registry/`  | Pluggable: FileSystemRegistry, SupabaseRegistry     |
+| ProjectManager            | `config/`    | Multi-project management + path validation          |
 
 ## Web Stores (`apps/web/src/stores/`)
 
@@ -73,7 +75,8 @@ signaling-server/    → standalone WebRTC signaling relay
 | `connectionStore` | WebSocket/WebRTC connection lifecycle        |
 | `terminalStore`   | Terminal tabs, session IDs, CWD map          |
 | `editorStore`     | Editor tabs, file content, dirty tracking    |
-| `workspaceStore`  | Active pane type (terminal vs editor)        |
+| `workspaceStore`  | Active pane type (terminal/editor/preview)   |
+| `browserStore`    | Browser preview state, frames, input events  |
 | `fileTreeStore`   | Lazy-loaded directory tree, expand state     |
 | `projectStore`    | Multi-project switching                      |
 | `authStore`       | Auth state (token/Supabase), session restore |
@@ -81,7 +84,7 @@ signaling-server/    → standalone WebRTC signaling relay
 
 ## Key Patterns
 
-**Transport**: Browser connects directly to Agent (P2P, no relay). WebSocket connects first, WebRTC upgrades in background via STUN. Two data channels: `terminal-io` (low-latency, unreliable) and `file-transfer` (reliable). See [README.md#connection-topology](README.md#connection-topology) for full topology diagram.
+**Transport**: Browser connects directly to Agent (P2P, no relay). WebSocket connects first, WebRTC upgrades in background via STUN. Three data channels: `terminal-io` (low-latency, unreliable), `file-transfer` (reliable), and `browser-stream` (reliable, screencast frames + input). See [README.md#connection-topology](README.md#connection-topology) for full topology diagram.
 
 **Message flow**:
 
@@ -94,7 +97,7 @@ Store → transportManager.send(type, payload)
 
 **Store listeners**: Stores register message handlers inside `create()` callbacks (see `fileTreeStore`, `editorStore` for pattern).
 
-**UI preservation**: Terminal ↔ Editor switching uses `display:none` (not unmount) to preserve xterm state.
+**UI preservation**: Terminal ↔ Editor ↔ Preview switching uses `display:none` (not unmount) to preserve xterm state.
 
 **Singletons**: Use `Symbol.for()` on `globalThis` to survive Turbopack module duplication.
 

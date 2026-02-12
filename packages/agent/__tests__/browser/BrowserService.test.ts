@@ -67,7 +67,10 @@ describe('BrowserService', () => {
 
     // Create a fresh EventEmitter-based mock child process for each test
     mockChildProcess = Object.assign(new EventEmitter(), {
-      kill: vi.fn(),
+      kill: vi.fn().mockImplementation(() => {
+        // Simulate Chrome exiting after kill signal
+        process.nextTick(() => mockChildProcess.emit('exit', 0, 'SIGTERM'));
+      }),
       pid: 12345,
       stderr: new EventEmitter(),
     });
@@ -462,6 +465,58 @@ describe('BrowserService', () => {
 
       // stop() should still complete without throwing
       await service.stop();
+      expect(mockChildProcess.kill).toHaveBeenCalled();
+      expect(service.isRunning()).toBe(false);
+    });
+  });
+
+  describe('stale lock cleanup', () => {
+    it('clears stale lock before starting Chrome', async () => {
+      // Create a stale lock in the profile dir
+      const profilePath = path.join(tmpDir, 'project-stale');
+      await fs.mkdir(profilePath, { recursive: true });
+      await fs.symlink('myhostname-999999', path.join(profilePath, 'SingletonLock'));
+
+      const startPromise = service.start('project-stale');
+      setTimeout(() => {
+        mockChildProcess.stderr.emit(
+          'data',
+          Buffer.from('DevTools listening on ws://127.0.0.1:9222/devtools/browser/abc\n')
+        );
+      }, 10);
+      await startPromise;
+
+      // Chrome should have been spawned (lock was cleared)
+      expect(mockSpawn).toHaveBeenCalled();
+      // Lock file should be gone
+      await expect(fs.lstat(path.join(profilePath, 'SingletonLock'))).rejects.toThrow();
+    });
+  });
+
+  describe('stop waits for Chrome exit', () => {
+    it('waits for Chrome process to exit before resolving', async () => {
+      const startPromise = service.start('project-1');
+      setTimeout(() => {
+        mockChildProcess.stderr.emit(
+          'data',
+          Buffer.from('DevTools listening on ws://127.0.0.1:9222/devtools/browser/abc\n')
+        );
+      }, 10);
+      await startPromise;
+
+      // Make kill() simulate delayed exit (50ms) to verify stop() actually waits
+      let exitEmitted = false;
+      mockChildProcess.kill.mockImplementation(() => {
+        setTimeout(() => {
+          exitEmitted = true;
+          mockChildProcess.emit('exit', 0, null);
+        }, 50);
+      });
+
+      await service.stop();
+
+      // stop() should have waited for the exit event
+      expect(exitEmitted).toBe(true);
       expect(mockChildProcess.kill).toHaveBeenCalled();
       expect(service.isRunning()).toBe(false);
     });

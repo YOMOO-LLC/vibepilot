@@ -100,6 +100,7 @@ export class BrowserService extends EventEmitter {
     this.viewportHeight = height;
 
     const profilePath = await this.profileManager.getProfilePath(projectId);
+    await this.profileManager.clearStaleLock(projectId);
     const port = 9222 + Math.floor(Math.random() * 50000);
 
     const args = [
@@ -242,8 +243,23 @@ export class BrowserService extends EventEmitter {
       this.cdpClient = null;
     }
     if (this.chromeProcess) {
-      this.chromeProcess.kill();
-      this.chromeProcess = null;
+      const proc = this.chromeProcess;
+      this.chromeProcess = null; // Clear first to prevent crash handler from firing
+      await new Promise<void>((resolve) => {
+        const timeout = setTimeout(() => {
+          try {
+            proc.kill('SIGKILL');
+          } catch {
+            /* already dead */
+          }
+          resolve();
+        }, 5000);
+        proc.on('exit', () => {
+          clearTimeout(timeout);
+          resolve();
+        });
+        proc.kill();
+      });
     }
     this.cdpEndpoint = null;
     this.cdpPort = null;

@@ -2,7 +2,7 @@
 
 > Browser-based development environment with persistent terminal sessions, real-time file editing, and optional cloud remote access.
 
-[![Tests](https://img.shields.io/badge/tests-427%20passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-619%20passing-brightgreen)]()
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)]()
 [![License](https://img.shields.io/badge/license-BSL%201.1-orange)]()
 [![Node.js](https://img.shields.io/badge/Node.js-20%2B-green)]()
@@ -16,7 +16,9 @@ VibePilot brings your terminal, file tree, and code editor to the browser. Run i
 - **WebRTC acceleration** — Sub-10ms terminal latency with automatic fallback to WebSocket
 - **Monaco Editor** — Full-featured code editor with syntax highlighting for 100+ languages
 - **Live file tree** — Real-time file system monitoring via chokidar
+- **Browser preview** — Stream a headless Chrome instance via CDP screencast
 - **Multi-project** — Switch between projects without restarting the agent
+- **Interactive setup** — First-run wizard and `vibepilot config` for guided configuration
 - **Cloud mode** — Optional Supabase authentication for secure remote access
 - **PWA installable** — Install as a standalone desktop app
 
@@ -46,42 +48,47 @@ VibePilot brings your terminal, file tree, and code editor to the browser. Run i
 ### Component Overview
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Browser (Web)                            │
-│                                                                 │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
-│  │   Terminal    │  │  File Tree   │  │    Monaco Editor     │  │
-│  │  (xterm.js)  │  │  (Lazy-load) │  │  (100+ languages)    │  │
-│  └──────┬───────┘  └──────┬───────┘  └──────────┬───────────┘  │
-│         └──────────────────┴─────────────────────┘              │
-│                     TransportManager                            │
-│               (WebRTC ⚡ + WebSocket 🔌)                        │
-│                                                                 │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────┐   │
-│  │ authStore│  │agentStore│  │projectStr│  │terminalStore │   │
-│  └──────────┘  └──────────┘  └──────────┘  └──────────────┘   │
-└───────────────────────────┬─────────────────────────────────────┘
-                            │
-                            │ @vibepilot/protocol
-                            │ (36 type-safe message types)
-                            │
-┌───────────────────────────┴─────────────────────────────────────┐
-│                       Agent (Node.js)                           │
-│                                                                 │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
-│  │  PtyManager  │  │  FileWatcher │  │    WebRTC Peer       │  │
-│  │  (node-pty)  │  │  (chokidar)  │  │ (node-datachannel)   │  │
-│  └──────────────┘  └──────────────┘  └──────────────────────┘  │
-│                                                                 │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │  Session Persistence (OutputDelegate → CircularBuffer)   │   │
-│  └──────────────────────────────────────────────────────────┘   │
-│                                                                 │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────────┐  │
-│  │ AuthProvider │  │AgentRegistry │  │  ProjectManager      │  │
-│  │ (pluggable)  │  │ (pluggable)  │  │  (multi-project)     │  │
-│  └──────────────┘  └──────────────┘  └──────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                          Browser (Web)                              │
+│                                                                     │
+│  ┌────────────┐ ┌────────────┐ ┌────────────────┐ ┌─────────────┐  │
+│  │  Terminal   │ │ File Tree  │ │  Monaco Editor  │ │  Preview    │  │
+│  │ (xterm.js) │ │(Lazy-load) │ │(100+ languages) │ │(CDP stream) │  │
+│  └──────┬─────┘ └──────┬─────┘ └───────┬────────┘ └──────┬──────┘  │
+│         └──────────────┴───────────────┴─────────────────┘          │
+│                       TransportManager                              │
+│                 (WebRTC ⚡ + WebSocket 🔌)                          │
+│                                                                     │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐ │
+│  │ authStore│ │agentStore│ │projectStr│ │terminalSt│ │browserStr│ │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘ └──────────┘ │
+└─────────────────────────────┬───────────────────────────────────────┘
+                              │
+                              │ @vibepilot/protocol
+                              │ (48 type-safe message types)
+                              │
+┌─────────────────────────────┴───────────────────────────────────────┐
+│                         Agent (Node.js)                             │
+│                                                                     │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────────────────────┐ │
+│  │  PtyManager  │ │  FileWatcher │ │       WebRTC Peer            │ │
+│  │  (node-pty)  │ │  (chokidar)  │ │    (node-datachannel)        │ │
+│  └──────────────┘ └──────────────┘ └──────────────────────────────┘ │
+│                                                                     │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │   Session Persistence (OutputDelegate → CircularBuffer)      │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+│                                                                     │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────────────────────┐ │
+│  │BrowserService│ │ AuthProvider │ │     ConfigManager            │ │
+│  │  (CDP+Chrome)│ │ (pluggable)  │ │   (interactive setup)        │ │
+│  └──────────────┘ └──────────────┘ └──────────────────────────────┘ │
+│                                                                     │
+│  ┌──────────────┐ ┌──────────────┐ ┌──────────────────────────────┐ │
+│  │AgentRegistry │ │ProjectManager│ │     Setup Wizard             │ │
+│  │ (pluggable)  │ │(multi-project│ │   (first-run config)         │ │
+│  └──────────────┘ └──────────────┘ └──────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Connection Topology
@@ -117,11 +124,12 @@ VibePilot uses a **peer-to-peer architecture** where the browser connects direct
 
 ### Data Channels
 
-| Channel         | Mode                      | Purpose                                          | Latency           |
-| --------------- | ------------------------- | ------------------------------------------------ | ----------------- |
-| `terminal-io`   | ordered, maxRetransmits=0 | Terminal input/output                            | <10ms (P2P)       |
-| `file-transfer` | ordered, reliable         | Image transfers, large files                     | Reliable delivery |
-| WebSocket       | TCP                       | Signaling, file tree, editor, project management | ~30-50ms          |
+| Channel          | Mode                      | Purpose                                          | Latency           |
+| ---------------- | ------------------------- | ------------------------------------------------ | ----------------- |
+| `terminal-io`    | ordered, maxRetransmits=0 | Terminal input/output                            | <10ms (P2P)       |
+| `file-transfer`  | ordered, reliable         | Image transfers, large files                     | Reliable delivery |
+| `browser-stream` | ordered, reliable         | Browser screencast frames + input events         | Reliable delivery |
+| WebSocket        | TCP                       | Signaling, file tree, editor, project management | ~30-50ms          |
 
 **Key design decision**: Terminal I/O uses `maxRetransmits=0` (unreliable delivery) for minimum latency — a dropped keystroke or partial frame is preferable to head-of-line blocking. File transfers use reliable mode to guarantee data integrity.
 
@@ -187,6 +195,32 @@ Open http://localhost:3000 and you're ready to go:
 3. **Refresh the page** — your terminal session restores automatically
 4. Browse files in the left sidebar, click to open in the editor
 5. Drag & drop images into the window to transfer them
+
+### Using the Agent CLI
+
+The agent CLI (`vibepilot`) can be run in development mode without a build step:
+
+```bash
+# Development mode — runs TypeScript directly via tsx
+pnpm --filter agent dev                              # Starts "vibepilot serve"
+npx tsx packages/agent/bin/vibepilot.ts setup         # First-run setup wizard
+npx tsx packages/agent/bin/vibepilot.ts config        # Interactive configuration
+npx tsx packages/agent/bin/vibepilot.ts project:list  # List projects
+```
+
+For production or global install:
+
+```bash
+# Build protocol + agent
+pnpm --filter protocol build && pnpm --filter agent build
+
+# Run compiled JS
+node packages/agent/dist/bin/vibepilot.js serve
+
+# Or link globally for use anywhere
+cd packages/agent && pnpm link --global
+vibepilot serve
+```
 
 ---
 
@@ -279,6 +313,22 @@ Start the agent server.
 
 Environment variable equivalents: `VP_TOKEN`, `VP_AGENT_NAME`, `VP_PUBLIC_URL`, `VP_REGISTRY_PATH`, `VP_SUPABASE_URL`, `VP_SUPABASE_KEY`.
 
+### `vibepilot setup`
+
+First-run setup wizard. Guides you through authentication mode selection, optional cloud/device auth, and project directory configuration. Automatically runs on first `vibepilot serve` if no config file exists.
+
+### `vibepilot config`
+
+Interactive configuration menu. Displays current settings and provides sub-menus for:
+
+| Sub-command       | Description                                        |
+| ----------------- | -------------------------------------------------- |
+| Authentication    | Switch auth mode (none, token, cloud, self-hosted) |
+| Server Settings   | Port, agent name, session timeout, public URL      |
+| Projects          | Add, remove, or list project directories           |
+| View Full Config  | Print current `~/.vibepilot/config.json`           |
+| Reset to Defaults | Reset all settings to factory defaults             |
+
 ### `vibepilot project:add <name> [path]`
 
 Add a project to the agent's project list.
@@ -306,10 +356,10 @@ vibepilot/
 ├── packages/
 │   ├── protocol/                # @vibepilot/protocol — shared message types (zero deps)
 │   │   ├── src/
-│   │   │   ├── constants.ts     # 29 message type constants
+│   │   │   ├── constants.ts     # 48 message type constants
 │   │   │   ├── messages.ts      # Type-safe payload interfaces + createMessage()
 │   │   │   └── types.ts         # VPMessage envelope type
-│   │   └── __tests__/           # 25 tests
+│   │   └── __tests__/           # 31 tests
 │   │
 │   └── agent/                   # @vibepilot/agent — Node.js backend
 │       ├── bin/vibepilot.ts     # CLI entry point (Commander.js)
@@ -318,13 +368,18 @@ vibepilot/
 │       │   ├── pty/             # PtyManager, SessionPersistenceManager,
 │       │   │                    # OutputDelegate, CircularBuffer
 │       │   ├── fs/              # FileTreeService, FileContentService, FileWatcher
-│       │   ├── config/          # ProjectManager, ProjectValidator
+│       │   ├── browser/         # BrowserService, ScreencastStream, InputHandler,
+│       │   │                    # AdaptiveQuality, ChromeDetector,
+│       │   │                    # BrowserProfileManager, McpConfigManager, CursorProbe
+│       │   ├── config/          # ConfigManager, ProjectManager, ProjectValidator
+│       │   ├── cli/             # configCommand (interactive config),
+│       │   │                    # setupWizard (first-run setup)
 │       │   ├── auth/            # AuthProvider, TokenAuthProvider,
-│       │   │                    # SupabaseAuthProvider
+│       │   │                    # SupabaseAuthProvider, CredentialManager
 │       │   ├── registry/        # AgentRegistry, FileSystemRegistry,
 │       │   │                    # SupabaseRegistry
 │       │   └── image/           # ImageReceiver
-│       └── __tests__/           # 207 tests
+│       └── __tests__/           # 350+ tests
 │
 ├── apps/
 │   └── web/                     # @vibepilot/web — Next.js 15 frontend
@@ -333,18 +388,19 @@ vibepilot/
 │       │   ├── components/
 │       │   │   ├── terminal/    # TerminalInstance, TerminalSplitLayout
 │       │   │   ├── editor/      # EditorPanel, MonacoEditor, ImagePreview
+│       │   │   ├── browser/     # PreviewPanel, PreviewToolbar, PreviewPlaceholder
 │       │   │   ├── filetree/    # FileTreePanel, FileTreeNode
 │       │   │   ├── connection/  # ConnectionStatus, DevicePicker,
 │       │   │   │                # TokenLoginScreen, SupabaseLoginScreen,
 │       │   │   │                # AgentSelectorScreen
 │       │   │   ├── project/     # ProjectSelectorModal, ProjectCard
-│       │   │   ├── tabs/        # TabBar (unified terminal + editor)
+│       │   │   ├── tabs/        # TabBar (unified terminal + editor + preview)
 │       │   │   ├── layout/      # AppShell, Sidebar, StatusBar
 │       │   │   └── image/       # ImageDropZone
-│       │   ├── stores/          # 8 Zustand stores
+│       │   ├── stores/          # 9 Zustand stores (incl. browserStore)
 │       │   ├── hooks/           # useTerminal, useKeyboardShortcuts, usePWA
-│       │   └── lib/             # websocket, webrtc, transport, supabase
-│       └── __tests__/           # 176 tests
+│       │   └── lib/             # websocket, webrtc, transport, portDetector
+│       └── __tests__/           # 237 tests
 │
 ├── relay-server/                # Message relay for NAT traversal (planned)
 │                                # Routes VPMessages between browser and agent
@@ -393,6 +449,25 @@ vibepilot/
 - **Drag & drop** — Drop PNG, JPEG, GIF, WebP, or PDF files anywhere in the UI
 - **Chunked transfer** — Large files are split into 63KB chunks for reliable delivery
 - **Visual feedback** — Drop zone overlay indicates active drag state
+
+### Browser Preview
+
+- **Remote Chrome** — Launch a headless Chrome instance on the Agent via Chrome DevTools Protocol (CDP)
+- **Screencast streaming** — Real-time browser frames sent over the `browser-stream` WebRTC data channel
+- **Adaptive quality** — Frame quality adjusts dynamically based on network conditions and acknowledgement latency
+- **Remote input** — Mouse clicks, keyboard input, and scrolling forwarded to the headless browser
+- **Port detection** — Automatically detects dev server ports (e.g., `localhost:3000`) and suggests preview URLs
+- **Cursor tracking** — Remote cursor CSS type streamed back to the browser for accurate pointer display
+- **Idle timeout** — Chrome auto-stops after 10 minutes of inactivity to conserve resources
+- **MCP integration** — Optionally installs MCP Chrome extension for AI-assisted browsing
+
+### Interactive Configuration
+
+- **First-run wizard** — `vibepilot setup` guides through auth mode, cloud login, and project directory setup
+- **Interactive config** — `vibepilot config` provides menu-driven configuration for auth, server, and projects
+- **Persistent config** — Settings stored in `~/.vibepilot/config.json`, no environment variables required
+- **Device auth flow** — Cloud mode uses browser-based device authorization (similar to `gh auth login`)
+- **Credential management** — Supabase tokens stored securely in the config file
 
 ### Transport Layer
 
@@ -461,13 +536,13 @@ Copy `.env.example` to `.env` (or `apps/web/.env.local` for the web app) and con
 VibePilot uses [Vitest](https://vitest.dev/) with strict TDD methodology.
 
 ```bash
-# Run all tests (427 tests across 44 files)
+# Run all tests (619 tests across 66 files)
 pnpm test
 
 # Run tests for a specific package
-pnpm --filter protocol test    # 25 tests
-pnpm --filter agent test       # 207 tests
-pnpm --filter web test         # 176 tests
+pnpm --filter protocol test    # 31 tests
+pnpm --filter agent test       # 343 tests
+pnpm --filter web test         # 237 tests
 
 # Run a single test file
 pnpm --filter agent test -- --run __tests__/pty/PtyManager.test.ts
@@ -532,26 +607,28 @@ pnpm --filter web start
 
 ## Tech Stack
 
-| Layer             | Technology                                   |
-| ----------------- | -------------------------------------------- |
-| **Frontend**      | Next.js 15, React 19, TypeScript 5.7         |
-| **Terminal**      | xterm.js, xterm-addon-fit                    |
-| **Editor**        | Monaco Editor (@monaco-editor/react)         |
-| **State**         | Zustand (8 stores)                           |
-| **Styling**       | Tailwind CSS 4                               |
-| **Layout**        | react-resizable-panels                       |
-| **Backend**       | Node.js 20+, Commander.js                    |
-| **PTY**           | node-pty                                     |
-| **WebSocket**     | ws                                           |
-| **WebRTC**        | node-datachannel                             |
-| **File watching** | chokidar                                     |
-| **Auth**          | jose (JWT/JWKS), @supabase/supabase-js       |
-| **Protocol**      | @vibepilot/protocol (zero deps)              |
-| **Build**         | pnpm workspaces, Turborepo                   |
-| **Testing**       | Vitest 3, @testing-library/react, Playwright |
-| **Linting**       | ESLint 9, Prettier 3                         |
-| **CI/CD**         | husky, lint-staged                           |
-| **Deployment**    | Docker, Caddy 2                              |
+| Layer             | Technology                                         |
+| ----------------- | -------------------------------------------------- |
+| **Frontend**      | Next.js 15, React 19, TypeScript 5.7               |
+| **Terminal**      | xterm.js, xterm-addon-fit                          |
+| **Editor**        | Monaco Editor (@monaco-editor/react)               |
+| **State**         | Zustand (9 stores)                                 |
+| **Styling**       | Tailwind CSS 4                                     |
+| **Layout**        | react-resizable-panels                             |
+| **Backend**       | Node.js 20+, Commander.js                          |
+| **PTY**           | node-pty                                           |
+| **WebSocket**     | ws                                                 |
+| **WebRTC**        | node-datachannel                                   |
+| **Browser**       | Chrome DevTools Protocol (chrome-remote-interface) |
+| **CLI prompts**   | @inquirer/prompts                                  |
+| **File watching** | chokidar                                           |
+| **Auth**          | jose (JWT/JWKS), @supabase/supabase-js             |
+| **Protocol**      | @vibepilot/protocol (zero deps)                    |
+| **Build**         | pnpm workspaces, Turborepo                         |
+| **Testing**       | Vitest 3, @testing-library/react, Playwright       |
+| **Linting**       | ESLint 9, Prettier 3                               |
+| **CI/CD**         | husky, lint-staged                                 |
+| **Deployment**    | Docker, Caddy 2                                    |
 
 ---
 
@@ -567,6 +644,8 @@ pnpm --filter web start
 - **Transport encryption** — WebRTC uses DTLS; WebSocket should use WSS (TLS) in production
 - **Session isolation** — Each PTY session is sandboxed to its workspace
 - **Input validation** — Project paths checked against forbidden system directories
+- **Browser URL validation** — Navigation restricted to `http:` and `https:` schemes only
+- **Secure temp files** — Image and browser temp files use `mkdtemp` + `randomUUID` with `0o600` permissions
 - **Auto HTTPS** — Caddy provides automatic TLS certificate management
 
 For vulnerability reporting, see [SECURITY.md](SECURITY.md).
@@ -613,7 +692,7 @@ pnpm test  # Verify everything passes before making changes
 - [x] Docker deployment with auto HTTPS
 - [x] PWA support
 - [ ] Port forwarding & web preview (preview dev servers through P2P tunnel)
-- [ ] Browser streaming (remote headless Chrome via WebRTC video track)
+- [x] Browser streaming (remote headless Chrome via CDP screencast + WebRTC data channel)
 - [ ] Mobile simulator streaming (scrcpy/simctl via WebRTC)
 - [ ] Intelligent notification system (command completion, error detection)
 - [ ] AI agent activity monitor (Claude Code/OpenCode output parsing)
