@@ -1,17 +1,16 @@
 import * as http from 'node:http';
-import * as crypto from 'node:crypto';
 
 export interface CallbackResult {
   accessToken: string;
   refreshToken: string;
-  expiresIn: number;
+  expiresAt: number;
+  userId: string;
   supabaseUrl: string;
   anonKey: string;
 }
 
 export interface StartResult {
   port: number;
-  state: string;
   authUrl: string;
 }
 
@@ -34,26 +33,23 @@ h1{color:#dc2626;margin:0 0 0.5rem}p{color:#6b7280}</style>
 const REQUIRED_PARAMS = [
   'access_token',
   'refresh_token',
-  'expires_in',
-  'state',
+  'expires_at',
+  'user_id',
   'supabase_url',
   'anon_key',
 ];
 
 export class DeviceAuthServer {
   private server: http.Server | null = null;
-  private state: string = '';
   private resolve: ((result: CallbackResult) => void) | null = null;
   private reject: ((err: Error) => void) | null = null;
 
   async start(cloudUrl: string): Promise<StartResult> {
-    this.state = crypto.randomBytes(32).toString('base64url');
-
     const port = await this.bindToRandomPort();
 
-    const authUrl = `${cloudUrl.replace(/\/$/, '')}/auth/device?port=${port}&state=${encodeURIComponent(this.state)}`;
+    const authUrl = `${cloudUrl.replace(/\/$/, '')}/auth/device?port=${port}`;
 
-    return { port, state: this.state, authUrl };
+    return { port, authUrl };
   }
 
   waitForCallback(timeoutMs: number = 120_000): Promise<CallbackResult> {
@@ -148,26 +144,12 @@ export class DeviceAuthServer {
       return;
     }
 
-    // Validate state
-    const callbackState = url.searchParams.get('state')!;
-    if (callbackState !== this.state) {
-      const isJsonRequest = req.headers.accept?.includes('application/json');
-      if (isJsonRequest) {
-        res.writeHead(400, { 'Content-Type': 'application/json', ...cors });
-        res.end(JSON.stringify({ error: 'State mismatch' }));
-      } else {
-        res.writeHead(400, { 'Content-Type': 'text/html', ...cors });
-        res.end(ERROR_HTML('Invalid state parameter — possible CSRF attack'));
-      }
-      this.reject?.(new Error('Authentication failed: state mismatch'));
-      return;
-    }
-
-    // Extract tokens
+    // Extract tokens and convert expires_at from seconds to milliseconds
     const result: CallbackResult = {
       accessToken: url.searchParams.get('access_token')!,
       refreshToken: url.searchParams.get('refresh_token')!,
-      expiresIn: parseInt(url.searchParams.get('expires_in')!, 10),
+      expiresAt: parseInt(url.searchParams.get('expires_at')!, 10) * 1000,
+      userId: url.searchParams.get('user_id')!,
       supabaseUrl: url.searchParams.get('supabase_url')!,
       anonKey: url.searchParams.get('anon_key')!,
     };
