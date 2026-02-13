@@ -4,24 +4,9 @@ import { redirect } from 'next/navigation';
 export default async function DeviceAuthPage({
   searchParams,
 }: {
-  searchParams: Promise<{ port?: string; state?: string; error?: string }>;
+  searchParams: Promise<{ port?: string; error?: string }>;
 }) {
   const params = await searchParams;
-
-  // Validate required parameters
-  if (!params.port || !params.state) {
-    return (
-      <div style={styles.container}>
-        <div style={styles.card}>
-          <h1 style={styles.errorTitle}>Missing required parameters</h1>
-          <p style={styles.text}>
-            This page should be opened from the <code>vibepilot auth login</code> command.
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   const supabase = await createServerClient();
 
   const {
@@ -30,7 +15,7 @@ export default async function DeviceAuthPage({
 
   // If already logged in, redirect to callback
   if (session) {
-    redirect(`/auth/device/callback?port=${params.port}&state=${params.state}`);
+    redirect(`/auth/device/callback?port=${params.port || '19876'}`);
   }
 
   // If not logged in, redirect to login page

@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 export default async function DeviceAuthCallbackPage({
   searchParams,
 }: {
-  searchParams: Promise<{ port?: string; state?: string }>;
+  searchParams: Promise<{ port?: string }>;
 }) {
   const params = await searchParams;
   const supabase = await createServerClient();
@@ -22,13 +22,11 @@ export default async function DeviceAuthCallbackPage({
 
   // Send credentials to agent's localhost callback
   const port = params.port || '19876';
-  const state = params.state || '';
   const callbackParams = new URLSearchParams({
     access_token: session.access_token,
     refresh_token: session.refresh_token!,
     expires_at: String(session.expires_at),
     user_id: session.user.id,
-    state,
     supabase_url: supabaseUrl,
     anon_key: anonKey,
   });
