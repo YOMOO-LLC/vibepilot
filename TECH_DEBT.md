@@ -83,6 +83,58 @@
 
 ---
 
+### Task 3: Device Auth Callback 页面 (Web)
+
+**记录日期**: 2026-02-13
+**优先级**: P0 (必须在 Task 4-6 实施前解决)
+
+#### 🔴 Critical Issues
+
+6. **Agent-Web 参数不匹配**
+   - **位置**: `packages/agent/src/auth/DeviceAuthServer.ts:34-41,170`
+   - **问题**: 现有 Agent 代码期望的参数与实施计划不符
+     - Agent 要求: `expires_in` (秒数), `state` (验证令牌)
+     - Web 发送: `expires_at` (时间戳), `user_id` (用户 ID)
+     - 现有代码是旧 Device Auth 实现（提交 d6f49ad）
+   - **风险**: 100% 认证失败 - Agent 会返回 HTTP 400 "Missing parameters"
+   - **决策**: 采用选项 2 - 修改 Agent 匹配实施计划（更现代的设计）
+   - **TODO**: 在 Task 4-6 实施 Agent 端时修正
+
+     ```typescript
+     // DeviceAuthServer.ts 需要修改：
+     const REQUIRED_PARAMS = [
+       'access_token',
+       'refresh_token',
+       'expires_at',      // 改为 expires_at (时间戳)
+       'user_id',         // 添加 user_id
+       'supabase_url',
+       'anon_key',
+       // 移除 'state' - 实施计划不使用
+     ];
+
+     // Line 170 改为：
+     expiresAt: parseInt(url.searchParams.get('expires_at')!, 10),
+     userId: url.searchParams.get('user_id')!,
+     ```
+
+   - **修复方案**: Task 4 实施 CredentialManager 时同步修正 DeviceAuthServer
+
+#### 决策记录
+
+**为什么采用选项 2（修改 Agent）？**
+
+1. **实施计划更合理**: `expires_at` (绝对时间) 比 `expires_in` (相对时间) 更可靠，避免时钟偏差
+2. **简化流程**: 移除 `state` 参数，因为 device flow 本身已足够安全（localhost callback + 浏览器会话验证）
+3. **统一修改**: Task 4-6 会重新实施 Agent 认证组件，可以一次性修正所有不一致
+
+**何时解决？**
+
+- Task 4: CredentialManager 实施时修正参数接口
+- Task 5: DeviceAuthServer 实施时更新验证逻辑
+- Task 6: CLI auth:login 集成测试验证
+
+---
+
 ## 解决进度追踪
 
 - [ ] Issue #1: Realtime 策略有效性验证 (Phase 2)
@@ -90,3 +142,4 @@
 - [ ] Issue #3: Publication 检查修复 (Phase 2)
 - [ ] Issue #4: 约束命名统一 (Phase 5)
 - [ ] Issue #5: Schema 限定添加 (Phase 5)
+- [ ] Issue #6: Agent-Web 参数匹配 (Task 4-6) **🔴 P0**
