@@ -17,11 +17,27 @@ export default async function DeviceAuthCallbackPage({
   }
 
   // From Vercel environment variables
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  // Send credentials to agent's localhost callback
-  const port = params.port || '19876';
+  if (!supabaseUrl || !anonKey) {
+    return (
+      <div style={styles.container}>
+        <div style={styles.card}>
+          <h1 style={styles.errorTitle}>Configuration Error</h1>
+          <p style={styles.text}>Supabase environment variables are not configured.</p>
+          <p style={styles.subtext}>Please contact your administrator.</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Validate and sanitize port (SSRF prevention)
+  const portStr = params.port || '19876';
+  const port = parseInt(portStr, 10);
+  if (!port || port < 19800 || port > 19899) {
+    redirect('/auth/login?error=invalid_port');
+  }
   const callbackParams = new URLSearchParams({
     access_token: session.access_token,
     refresh_token: session.refresh_token!,
