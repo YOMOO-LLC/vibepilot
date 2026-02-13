@@ -33,20 +33,8 @@ export default async function DeviceAuthPage({
     redirect(`/auth/device/callback?port=${params.port}&state=${params.state}`);
   }
 
-  // If not logged in, redirect to login page (will be created in a future task)
-  // For now, show a message that login page is not yet implemented
-  return (
-    <div style={styles.container}>
-      <div style={styles.card}>
-        <h1 style={styles.title}>VibePilot Agent Authentication</h1>
-        <p style={styles.text}>Login page not yet implemented.</p>
-        <p style={styles.subtext}>
-          This will redirect to /auth/login in the future. For now, please authenticate through the
-          web interface first.
-        </p>
-      </div>
-    </div>
-  );
+  // If not logged in, redirect to login page
+  redirect(`/auth/login?redirect=/auth/device/callback&port=${params.port || '19876'}`);
 }
 
 const styles: Record<string, React.CSSProperties> = {

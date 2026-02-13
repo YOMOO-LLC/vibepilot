@@ -13,7 +13,7 @@ export default async function DeviceAuthCallbackPage({
     data: { session },
   } = await supabase.auth.getSession();
   if (!session) {
-    redirect('/auth/device?error=unauthorized');
+    redirect('/auth/login?error=unauthorized');
   }
 
   // From Vercel environment variables
@@ -26,7 +26,8 @@ export default async function DeviceAuthCallbackPage({
   const callbackParams = new URLSearchParams({
     access_token: session.access_token,
     refresh_token: session.refresh_token!,
-    expires_in: String(session.expires_in ?? 3600),
+    expires_at: String(session.expires_at),
+    user_id: session.user.id,
     state,
     supabase_url: supabaseUrl,
     anon_key: anonKey,
