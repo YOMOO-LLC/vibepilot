@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
+    "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.95.3",
     "@vibepilot/protocol": "workspace:*",
     "@xterm/addon-fit": "^0.10.0",
