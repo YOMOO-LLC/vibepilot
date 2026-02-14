@@ -260,15 +260,54 @@ export const agentStore = create<CloudAgentStore>((set, get) => ({
   },
 
   selectAgent: async (agentId: string) => {
-    const agent = get().agents.find((a) => a.id === agentId);
-    if (!agent) {
-      console.warn(`Agent ${agentId} not found`);
+    const { supabase, agents } = get();
+    if (!supabase) {
+      console.error('[agentStore] No Supabase client available');
       return;
     }
 
-    // TODO: For Cloud mode, we need to get the agent's public URL from the database
-    // and connect via WebRTC signaling. This is a placeholder implementation.
-    // For now, this is a stub - actual implementation will need WebRTC signaling
-    console.log('Connecting to agent:', agent);
+    // 获取 session
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) {
+      console.error('[agentStore] No active session');
+      return;
+    }
+
+    // 查找 agent
+    const agent = agents.find((a) => a.id === agentId);
+    if (!agent) {
+      console.error('[agentStore] Agent not found:', agentId);
+      return;
+    }
+
+    // 检查 agent 是否在线
+    if (!agent.online) {
+      console.warn('[agentStore] Agent is offline:', agentId);
+      // TODO: 显示 toast 通知用户
+      return;
+    }
+
+    console.log('[agentStore] Initiating WebRTC connection to agent:', agentId);
+
+    // 初始化 WebRTC 信令
+    const { WebRTCSignaling } = await import('@/lib/webrtc-signaling');
+    const signaling = new WebRTCSignaling(supabase, session.user.id);
+
+    try {
+      const client = await signaling.connect(agentId, (state, meta) => {
+        console.log('[agentStore] Connection state:', state, meta);
+        // TODO: 更新 UI 状态（显示连接进度）
+      });
+
+      console.log('[agentStore] WebRTC connection established');
+
+      // TODO: 将 client 保存到 store，用于后续消息传输
+      // 暂时先打印成功消息
+    } catch (err: any) {
+      console.error('[agentStore] WebRTC connection failed:', err.message);
+      // TODO: 显示错误 toast
+    }
   },
 }));
