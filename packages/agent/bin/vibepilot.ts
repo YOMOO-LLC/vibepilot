@@ -133,6 +133,7 @@ program
     let registry: AgentRegistry | undefined;
     let registeredAgentId: string | undefined;
     let presence: RealtimePresence | undefined;
+    let webrtcSignaling: any;
     const publicUrl = opts.publicUrl || process.env.VP_PUBLIC_URL;
 
     if (supabaseUrl && supabaseKey) {
@@ -210,6 +211,16 @@ program
             onlineAt: new Date().toISOString(),
           });
           logger.info({ channel: `user:${refreshed.userId}:agents` }, 'Presence broadcast started');
+
+          // Initialize WebRTC signaling
+          const { WebRTCSignaling } = await import('../src/transport/WebRTCSignaling.js');
+          webrtcSignaling = new WebRTCSignaling(supabase, refreshed.userId, agentInfo.id);
+
+          // Get presence channel and start listening
+          const presenceChannel = supabase.channel(`user:${refreshed.userId}:agents`);
+          await webrtcSignaling.start(presenceChannel);
+
+          logger.info('WebRTC signaling initialized');
         } catch (err: any) {
           logger.error(
             { err: err.message },
@@ -284,6 +295,14 @@ program
           await presence.announceOffline();
         } catch (err) {
           logger.error({ err }, 'Failed to announce offline during shutdown');
+        }
+      }
+      if (webrtcSignaling) {
+        try {
+          await webrtcSignaling.stop();
+          logger.info('WebRTC signaling stopped');
+        } catch (err) {
+          logger.error({ err }, 'Failed to stop WebRTC signaling');
         }
       }
       if (registry && registeredAgentId) {
