@@ -24,7 +24,9 @@ export const MessageType = {
   IMAGE_COMPLETE: 'image:complete',
   IMAGE_SAVED: 'image:saved',
 
-  // WebRTC signaling
+  // WebRTC signaling (Supabase Broadcast)
+  CONNECTION_REQUEST: 'connection:request',
+  CONNECTION_READY: 'connection:ready',
   SIGNAL_OFFER: 'signal:offer',
   SIGNAL_ANSWER: 'signal:answer',
   SIGNAL_CANDIDATE: 'signal:candidate',

@@ -111,6 +111,14 @@ export interface ImageSavedPayload {
 
 // --- Signal Messages ---
 
+export interface ConnectionRequestPayload {
+  agentId: string;
+}
+
+export interface ConnectionReadyPayload {
+  agentId: string;
+}
+
 export interface SignalOfferPayload {
   sdp: string;
 }
@@ -309,6 +317,8 @@ export interface MessagePayloadMap {
   [MessageType.IMAGE_CHUNK]: ImageChunkPayload;
   [MessageType.IMAGE_COMPLETE]: ImageCompletePayload;
   [MessageType.IMAGE_SAVED]: ImageSavedPayload;
+  [MessageType.CONNECTION_REQUEST]: ConnectionRequestPayload;
+  [MessageType.CONNECTION_READY]: ConnectionReadyPayload;
   [MessageType.SIGNAL_OFFER]: SignalOfferPayload;
   [MessageType.SIGNAL_ANSWER]: SignalAnswerPayload;
   [MessageType.SIGNAL_CANDIDATE]: SignalCandidatePayload;
