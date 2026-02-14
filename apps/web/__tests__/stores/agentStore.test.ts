@@ -1,164 +1,85 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { useAgentStore } from '@/stores/agentStore';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock crypto.randomUUID
-vi.stubGlobal('crypto', { randomUUID: () => 'test-uuid-1234' });
+// Mock the supabase client module before importing stores
+const mockChannel = {
+  on: vi.fn().mockReturnThis(),
+  subscribe: vi.fn().mockResolvedValue(undefined),
+  presenceState: vi.fn(() => ({})),
+};
 
-// Mock localStorage
-const localStorageMock = (() => {
-  let store: Record<string, string> = {};
-  return {
-    getItem: vi.fn((key: string) => store[key] ?? null),
-    setItem: vi.fn((key: string, value: string) => {
-      store[key] = value;
-    }),
-    removeItem: vi.fn((key: string) => {
-      delete store[key];
-    }),
-    clear: () => {
-      store = {};
-    },
-  };
-})();
-Object.defineProperty(window, 'localStorage', { value: localStorageMock });
+const mockSupabase = {
+  from: vi.fn(() => ({
+    select: vi.fn(() => ({
+      order: vi.fn(() =>
+        Promise.resolve({
+          data: [
+            {
+              id: 'agent-1',
+              name: 'test-project',
+              platform: 'darwin',
+              last_seen: new Date().toISOString(),
+            },
+          ],
+        })
+      ),
+    })),
+  })),
+  channel: vi.fn(() => mockChannel),
+  auth: {
+    getSession: vi.fn(() =>
+      Promise.resolve({
+        data: {
+          session: {
+            access_token: 'test-token',
+            user: { id: 'test-user-id', email: 'test@example.com' },
+          },
+        },
+      })
+    ),
+    onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
+  },
+};
+
+vi.mock('@/lib/supabase', () => ({
+  supabase: mockSupabase,
+}));
+
+// Now import after mocks are set up
+const { agentStore } = await import('../../src/stores/agentStore');
 
 describe('agentStore', () => {
   beforeEach(() => {
-    localStorageMock.clear();
     vi.clearAllMocks();
     // Reset store state
-    useAgentStore.setState({
+    agentStore.setState({
       agents: [],
-      selectedAgent: null,
-      showSelector: false,
-      loading: false,
+      presenceChannel: null,
+      supabase: null,
     });
   });
 
-  describe('loadAgents', () => {
-    it('loads agents from localStorage', async () => {
-      const agents = [{ id: 'a1', name: 'Home', url: 'ws://home:9800' }];
-      localStorageMock.getItem.mockReturnValueOnce(JSON.stringify(agents));
+  it('should initialize and load agents from database', async () => {
+    await agentStore.getState().initialize();
 
-      await useAgentStore.getState().loadAgents();
+    const agents = agentStore.getState().agents;
 
-      expect(useAgentStore.getState().agents).toEqual(agents);
-    });
-
-    it('shows selector when no agents found', async () => {
-      await useAgentStore.getState().loadAgents();
-
-      expect(useAgentStore.getState().showSelector).toBe(true);
-    });
-
-    it('handles invalid JSON gracefully', async () => {
-      localStorageMock.getItem.mockReturnValueOnce('not-json');
-
-      await useAgentStore.getState().loadAgents();
-
-      expect(useAgentStore.getState().agents).toEqual([]);
-      expect(useAgentStore.getState().showSelector).toBe(true);
-    });
+    expect(agents).toHaveLength(1);
+    expect(agents[0].name).toBe('test-project');
+    expect(agents[0].online).toBe(false);
   });
 
-  describe('addAgent', () => {
-    it('adds agent and saves to localStorage', () => {
-      const agent = useAgentStore.getState().addAgent('Home Server', 'ws://home:9800');
+  it('should subscribe to presence channel', async () => {
+    await agentStore.getState().initialize();
 
-      expect(agent.id).toBe('test-uuid-1234');
-      expect(agent.name).toBe('Home Server');
-      expect(agent.url).toBe('ws://home:9800');
-      expect(useAgentStore.getState().agents).toHaveLength(1);
-      expect(localStorageMock.setItem).toHaveBeenCalledWith('vp:agents', expect.any(String));
-    });
-  });
-
-  describe('removeAgent', () => {
-    it('removes agent and updates localStorage', () => {
-      useAgentStore.setState({
-        agents: [{ id: 'a1', name: 'Home', url: 'ws://home:9800' }],
-      });
-
-      useAgentStore.getState().removeAgent('a1');
-
-      expect(useAgentStore.getState().agents).toHaveLength(0);
-    });
-
-    it('clears selectedAgent if removed', () => {
-      const agent = { id: 'a1', name: 'Home', url: 'ws://home:9800' };
-      useAgentStore.setState({
-        agents: [agent],
-        selectedAgent: agent,
-      });
-
-      useAgentStore.getState().removeAgent('a1');
-
-      expect(useAgentStore.getState().selectedAgent).toBeNull();
-    });
-  });
-
-  describe('selectAgent', () => {
-    it('selects agent and closes selector', () => {
-      const agent = { id: 'a1', name: 'Home', url: 'ws://home:9800' };
-      useAgentStore.setState({
-        agents: [agent],
-        showSelector: true,
-      });
-
-      useAgentStore.getState().selectAgent('a1');
-
-      expect(useAgentStore.getState().selectedAgent).toEqual(agent);
-      expect(useAgentStore.getState().showSelector).toBe(false);
-      expect(localStorageMock.setItem).toHaveBeenCalledWith('vp:lastAgentId', 'a1');
-    });
-
-    it('does nothing for unknown agent id', () => {
-      useAgentStore.getState().selectAgent('unknown');
-
-      expect(useAgentStore.getState().selectedAgent).toBeNull();
-    });
-  });
-
-  describe('restoreLastAgent', () => {
-    it('restores last selected agent from localStorage', () => {
-      const agent = { id: 'a1', name: 'Home', url: 'ws://home:9800' };
-      useAgentStore.setState({ agents: [agent] });
-      localStorageMock.getItem.mockImplementation((key: string) => {
-        if (key === 'vp:lastAgentId') return 'a1';
-        return null;
-      });
-
-      const result = useAgentStore.getState().restoreLastAgent();
-
-      expect(result).toBe(true);
-      expect(useAgentStore.getState().selectedAgent).toEqual(agent);
-    });
-
-    it('returns false when no last agent stored', () => {
-      const result = useAgentStore.getState().restoreLastAgent();
-
-      expect(result).toBe(false);
-    });
-
-    it('returns false when last agent not found in list', () => {
-      localStorageMock.getItem.mockImplementation((key: string) => {
-        if (key === 'vp:lastAgentId') return 'nonexistent';
-        return null;
-      });
-
-      const result = useAgentStore.getState().restoreLastAgent();
-
-      expect(result).toBe(false);
-    });
-  });
-
-  describe('openSelector / closeSelector', () => {
-    it('toggles showSelector', () => {
-      useAgentStore.getState().openSelector();
-      expect(useAgentStore.getState().showSelector).toBe(true);
-
-      useAgentStore.getState().closeSelector();
-      expect(useAgentStore.getState().showSelector).toBe(false);
-    });
+    expect(mockSupabase.channel).toHaveBeenCalledWith(
+      expect.stringContaining('agents'),
+      expect.any(Object)
+    );
+    expect(mockChannel.on).toHaveBeenCalledWith(
+      'presence',
+      { event: 'sync' },
+      expect.any(Function)
+    );
+    expect(mockChannel.subscribe).toHaveBeenCalled();
   });
 });

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
+import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
 
 const AUTH_MODE = process.env.NEXT_PUBLIC_AUTH_MODE || 'none';
 
@@ -158,4 +159,117 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
 
   openSelector: () => set({ showSelector: true }),
   closeSelector: () => set({ showSelector: false }),
+}));
+
+// New Cloud mode agent type (with Realtime Presence)
+interface Agent {
+  id: string;
+  name: string;
+  platform: string;
+  version?: string;
+  projectPath?: string;
+  tags?: string[];
+  lastSeen: string;
+  online: boolean;
+  publicKey?: string;
+}
+
+// New Cloud mode store (with Realtime Presence)
+interface CloudAgentStore {
+  agents: Agent[];
+  presenceChannel: RealtimeChannel | null;
+  supabase: SupabaseClient | null;
+
+  initialize: () => Promise<void>;
+  selectAgent: (agentId: string) => Promise<void>;
+}
+
+// New Cloud mode store with Realtime Presence (for NAT traversal feature)
+export const agentStore = create<CloudAgentStore>((set, get) => ({
+  agents: [],
+  presenceChannel: null,
+  supabase: null,
+
+  initialize: async () => {
+    if (!supabase) {
+      console.warn('Supabase client not available');
+      return;
+    }
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) {
+      console.warn('No active session');
+      return;
+    }
+
+    // 1. Load persisted agents from PostgreSQL
+    const { data: persistedAgents } = await supabase
+      .from('agents')
+      .select('*')
+      .order('last_seen', { ascending: false });
+
+    set({
+      supabase,
+      agents: (persistedAgents || []).map((a: any) => ({
+        id: a.id,
+        name: a.name,
+        platform: a.platform,
+        version: a.version,
+        projectPath: a.project_path,
+        tags: a.tags,
+        lastSeen: a.last_seen,
+        online: false,
+        publicKey: a.public_key,
+      })),
+    });
+
+    // 2. Subscribe to Realtime Presence
+    const channel = supabase.channel(`user:${session.user.id}:agents`, {
+      config: {
+        presence: { key: session.user.id },
+      },
+    });
+
+    channel
+      .on('presence', { event: 'sync' }, () => {
+        const state = channel.presenceState();
+        const onlineAgentIds = new Set<string>();
+
+        Object.values(state).forEach((presences: any[]) => {
+          presences.forEach((p) => onlineAgentIds.add(p.agent_id));
+        });
+
+        set((state) => ({
+          agents: state.agents.map((a) => ({
+            ...a,
+            online: onlineAgentIds.has(a.id),
+          })),
+        }));
+      })
+      .on('presence', { event: 'join' }, ({ newPresences }) => {
+        console.log('Agent joined:', newPresences);
+      })
+      .on('presence', { event: 'leave' }, ({ leftPresences }) => {
+        console.log('Agent left:', leftPresences);
+      })
+      .subscribe();
+
+    set({ presenceChannel: channel });
+  },
+
+  selectAgent: async (agentId: string) => {
+    const agent = get().agents.find((a) => a.id === agentId);
+    if (!agent) {
+      console.warn(`Agent ${agentId} not found`);
+      return;
+    }
+
+    // TODO: For Cloud mode, we need to get the agent's public URL from the database
+    // and connect via WebRTC signaling. This is a placeholder implementation.
+    const { useConnectionStore } = await import('./connectionStore');
+    // For now, this is a stub - actual implementation will need WebRTC signaling
+    console.log('Connecting to agent:', agent);
+  },
 }));
