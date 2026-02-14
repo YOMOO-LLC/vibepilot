@@ -1,0 +1,252 @@
+'use client';
+
+import type { SupabaseClient, RealtimeChannel } from '@supabase/supabase-js';
+import { VPWebRTCClient } from './webrtc';
+
+export type ConnectionState =
+  | 'idle'
+  | 'requesting'
+  | 'waiting-ready'
+  | 'creating-offer'
+  | 'waiting-answer'
+  | 'connecting'
+  | 'connected'
+  | 'failed'
+  | 'retrying';
+
+const RETRY_CONFIG = {
+  maxRetries: 3,
+  retryDelay: 3000, // 3 seconds
+};
+
+const TIMEOUT_CONFIG = {
+  waitReady: 5000, // 5 seconds
+  waitAnswer: 10000, // 10 seconds
+  waitConnection: 15000, // 15 seconds
+};
+
+export class WebRTCSignaling {
+  constructor(
+    private supabase: SupabaseClient,
+    private userId: string
+  ) {}
+
+  /**
+   * Initiate connection (main entry point)
+   */
+  async connect(
+    agentId: string,
+    onStateChange: (state: ConnectionState, meta?: any) => void
+  ): Promise<VPWebRTCClient> {
+    let retries = 0;
+
+    while (retries < RETRY_CONFIG.maxRetries) {
+      try {
+        const client = new VPWebRTCClient();
+        await this.attemptConnection(agentId, client, onStateChange);
+        return client;
+      } catch (err: any) {
+        retries++;
+        if (retries < RETRY_CONFIG.maxRetries) {
+          onStateChange('retrying', { attempt: retries, maxRetries: RETRY_CONFIG.maxRetries });
+          await this.delay(RETRY_CONFIG.retryDelay);
+        } else {
+          onStateChange('failed', { error: err.message });
+          throw err;
+        }
+      }
+    }
+
+    throw new Error('Unreachable');
+  }
+
+  /**
+   * Attempt one connection (private)
+   */
+  private async attemptConnection(
+    agentId: string,
+    client: VPWebRTCClient,
+    onStateChange: (state: ConnectionState) => void
+  ): Promise<void> {
+    onStateChange('requesting');
+
+    // 1. Listen on Presence channel
+    const presenceChannel = this.supabase.channel(`user:${this.userId}:agents`);
+    await presenceChannel.subscribe();
+
+    // 2. Send CONNECTION_REQUEST
+    await presenceChannel.send({
+      type: 'broadcast',
+      event: 'connection-request',
+      payload: { agentId },
+    });
+
+    onStateChange('waiting-ready');
+
+    // 3. Wait for READY (5s timeout)
+    const ready = await this.waitForReady(presenceChannel, agentId, TIMEOUT_CONFIG.waitReady);
+    if (!ready) {
+      await presenceChannel.unsubscribe();
+      throw new Error('Agent did not respond (timeout waiting for READY)');
+    }
+
+    // 4. Create signaling channel
+    const signalingChannel = this.supabase.channel(`agent:${agentId}:signaling`);
+    await signalingChannel.subscribe();
+
+    onStateChange('creating-offer');
+
+    // 5. Create and send offer
+    await client.createOffer(
+      // onSignal: Send signaling messages
+      (msg) => {
+        signalingChannel
+          .send({
+            type: 'broadcast',
+            event:
+              msg.type === 'signal-offer'
+                ? 'offer'
+                : msg.type === 'signal-candidate'
+                  ? 'candidate'
+                  : 'unknown',
+            payload: msg.payload,
+          })
+          .catch((err) => {
+            console.error('[WebRTCSignaling] Failed to send signal:', err);
+          });
+      },
+      // onStateChange: WebRTC state changes
+      (state) => {
+        if (state === 'connected') {
+          onStateChange('connected');
+        }
+      }
+    );
+
+    onStateChange('waiting-answer');
+
+    // 6. Wait for answer (10s timeout)
+    const answer = await this.waitForAnswer(signalingChannel, TIMEOUT_CONFIG.waitAnswer);
+    if (!answer) {
+      await signalingChannel.unsubscribe();
+      await presenceChannel.unsubscribe();
+      throw new Error('No answer received from agent');
+    }
+
+    await client.handleAnswer(answer.sdp);
+
+    onStateChange('connecting');
+
+    // 7. Setup ICE exchange
+    this.setupIceExchange(client, signalingChannel);
+
+    // 8. Wait for connection success (15s timeout)
+    await this.waitForConnection(client, TIMEOUT_CONFIG.waitConnection);
+
+    // 9. Cleanup signaling channel
+    await signalingChannel.unsubscribe();
+    // Keep presence channel open (may be needed by other features)
+  }
+
+  /**
+   * Wait for READY response (private)
+   */
+  private async waitForReady(
+    channel: RealtimeChannel,
+    agentId: string,
+    timeout: number
+  ): Promise<boolean> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(false), timeout);
+
+      const subscription = (channel as any).on(
+        'broadcast',
+        { event: 'connection-ready' },
+        (msg: { agentId: string }) => {
+          if (msg.agentId === agentId) {
+            clearTimeout(timer);
+            subscription.unsubscribe();
+            resolve(true);
+          }
+        }
+      );
+    });
+  }
+
+  /**
+   * Wait for answer (private)
+   */
+  private async waitForAnswer(
+    channel: RealtimeChannel,
+    timeout: number
+  ): Promise<{ sdp: string } | null> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(null), timeout);
+
+      const subscription = (channel as any).on(
+        'broadcast',
+        { event: 'answer' },
+        (msg: { sdp: string }) => {
+          clearTimeout(timer);
+          subscription.unsubscribe();
+          resolve(msg);
+        }
+      );
+    });
+  }
+
+  /**
+   * Setup ICE exchange (private)
+   */
+  private setupIceExchange(client: VPWebRTCClient, channel: RealtimeChannel): void {
+    // Listen for channel's ICE candidates
+    (channel as any).on(
+      'broadcast',
+      { event: 'candidate' },
+      (msg: { candidate: string; sdpMid?: string; sdpMLineIndex?: number }) => {
+        client.addIceCandidate(msg.candidate, msg.sdpMid, msg.sdpMLineIndex).catch((err) => {
+          console.error('[WebRTCSignaling] Failed to add ICE candidate:', err);
+        });
+      }
+    );
+  }
+
+  /**
+   * Wait for connection success (private)
+   */
+  private async waitForConnection(client: VPWebRTCClient, timeout: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error('WebRTC connection timeout'));
+      }, timeout);
+
+      // Check current state
+      if (client.state === 'connected') {
+        clearTimeout(timer);
+        resolve();
+        return;
+      }
+
+      // Monitor state changes (createOffer already set onStateChange)
+      // Poll state every 100ms
+      const checkInterval = setInterval(() => {
+        if (client.state === 'connected') {
+          clearTimeout(timer);
+          clearInterval(checkInterval);
+          resolve();
+        } else if (client.state === 'failed') {
+          clearTimeout(timer);
+          clearInterval(checkInterval);
+          reject(new Error('WebRTC connection failed'));
+        }
+      }, 100);
+    });
+  }
+
+  /**
+   * Delay helper (private)
+   */
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+}
