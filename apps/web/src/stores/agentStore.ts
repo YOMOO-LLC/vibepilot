@@ -268,7 +268,6 @@ export const agentStore = create<CloudAgentStore>((set, get) => ({
 
     // TODO: For Cloud mode, we need to get the agent's public URL from the database
     // and connect via WebRTC signaling. This is a placeholder implementation.
-    const { useConnectionStore } = await import('./connectionStore');
     // For now, this is a stub - actual implementation will need WebRTC signaling
     console.log('Connecting to agent:', agent);
   },
