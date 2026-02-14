@@ -17,6 +17,8 @@ import { runSetupWizard } from '../src/cli/setupWizard.js';
 import { configMain, configAuth, configServer, configProjects } from '../src/cli/configCommand.js';
 import type { AuthProvider } from '../src/auth/AuthProvider.js';
 import type { AgentRegistry } from '../src/registry/AgentRegistry.js';
+import { RealtimePresence } from '../src/transport/RealtimePresence.js';
+import { createClient } from '@supabase/supabase-js';
 
 const program = new Command();
 
@@ -130,6 +132,7 @@ program
     // ── Initialize agent registry ───────────────────────────────
     let registry: AgentRegistry | undefined;
     let registeredAgentId: string | undefined;
+    let presence: RealtimePresence | undefined;
     const publicUrl = opts.publicUrl || process.env.VP_PUBLIC_URL;
 
     if (supabaseUrl && supabaseKey) {
@@ -152,6 +155,10 @@ program
       });
       registeredAgentId = agentInfo.id;
       logger.info({ agentId: agentInfo.id, name: agentInfo.name }, 'Agent registered (Supabase)');
+
+      // Initialize RealtimePresence and broadcast online status
+      // Note: For service_role mode, we cannot use presence (requires user JWT)
+      logger.warn('RealtimePresence not available in service_role mode (requires user JWT)');
     } else if (!supabaseUrl && !supabaseKey) {
       // No explicit Supabase flags — try stored credentials
       const credManager = new CredentialManager();
@@ -184,6 +191,25 @@ program
             { agentId: agentInfo.id, name: agentInfo.name },
             'Agent registered (credentials)'
           );
+
+          // Initialize RealtimePresence and broadcast online status
+          const supabase = createClient(refreshed.supabaseUrl, refreshed.anonKey, {
+            global: {
+              headers: {
+                Authorization: `Bearer ${refreshed.accessToken}`,
+              },
+            },
+          });
+
+          presence = new RealtimePresence(supabase, refreshed.userId);
+          await presence.announceOnline(agentInfo.id, {
+            agentId: agentInfo.id,
+            name: agentInfo.name,
+            platform: os.platform() as 'darwin' | 'linux' | 'win32',
+            publicKey: undefined,
+            onlineAt: new Date().toISOString(),
+          });
+          logger.info({ channel: `user:${refreshed.userId}:agents` }, 'Presence broadcast started');
         } catch (err: any) {
           logger.error(
             { err: err.message },
@@ -252,6 +278,13 @@ program
       logger.info('Shutting down gracefully...');
       if (heartbeatInterval) {
         clearInterval(heartbeatInterval);
+      }
+      if (presence) {
+        try {
+          await presence.announceOffline();
+        } catch (err) {
+          logger.error({ err }, 'Failed to announce offline during shutdown');
+        }
       }
       if (registry && registeredAgentId) {
         try {

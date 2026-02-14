@@ -91,6 +91,17 @@ vi.mock('jose', () => ({
   jwtVerify: vi.fn(),
 }));
 
+vi.mock('@supabase/supabase-js', () => ({
+  createClient: vi.fn().mockReturnValue({}),
+}));
+
+vi.mock('../../src/transport/RealtimePresence.js', () => ({
+  RealtimePresence: vi.fn().mockImplementation(() => ({
+    announceOnline: vi.fn().mockResolvedValue(undefined),
+    announceOffline: vi.fn().mockResolvedValue(undefined),
+  })),
+}));
+
 import { program } from '../../bin/vibepilot.js';
 
 describe('serve with stored credentials', () => {
