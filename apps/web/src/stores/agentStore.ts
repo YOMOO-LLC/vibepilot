@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
 import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
+import type { VPWebRTCClient } from '@/lib/webrtc';
 
 const AUTH_MODE = process.env.NEXT_PUBLIC_AUTH_MODE || 'none';
 
@@ -179,9 +180,12 @@ interface CloudAgentStore {
   agents: Agent[];
   presenceChannel: RealtimeChannel | null;
   supabase: SupabaseClient | null;
+  activeClient: VPWebRTCClient | null;
+  selectedAgentId: string | null;
 
   initialize: () => Promise<void>;
   selectAgent: (agentId: string) => Promise<void>;
+  disconnect: () => void;
 }
 
 // New Cloud mode store with Realtime Presence (for NAT traversal feature)
@@ -189,6 +193,8 @@ export const agentStore = create<CloudAgentStore>((set, get) => ({
   agents: [],
   presenceChannel: null,
   supabase: null,
+  activeClient: null,
+  selectedAgentId: null,
 
   initialize: async () => {
     if (!supabase) {
@@ -259,8 +265,28 @@ export const agentStore = create<CloudAgentStore>((set, get) => ({
     set({ presenceChannel: channel });
   },
 
+  disconnect: () => {
+    const { activeClient } = get();
+    if (activeClient) {
+      try {
+        activeClient.close();
+        console.log('[agentStore] Disconnected WebRTC client');
+      } catch (err) {
+        console.error('[agentStore] Failed to close client:', err);
+      }
+      set({ activeClient: null, selectedAgentId: null });
+    }
+  },
+
   selectAgent: async (agentId: string) => {
-    const { supabase, agents } = get();
+    const { supabase, agents, activeClient, selectedAgentId } = get();
+
+    // Disconnect previous connection if exists
+    if (activeClient && selectedAgentId !== agentId) {
+      console.log('[agentStore] Disconnecting previous agent:', selectedAgentId);
+      get().disconnect();
+    }
+
     if (!supabase) {
       console.error('[agentStore] No Supabase client available');
       return;
@@ -303,10 +329,11 @@ export const agentStore = create<CloudAgentStore>((set, get) => ({
 
       console.log('[agentStore] WebRTC connection established');
 
-      // TODO: 将 client 保存到 store，用于后续消息传输
-      // 暂时先打印成功消息
+      // Store client and agent ID
+      set({ activeClient: client, selectedAgentId: agentId });
     } catch (err: any) {
       console.error('[agentStore] WebRTC connection failed:', err.message);
+      set({ activeClient: null, selectedAgentId: null });
       // TODO: 显示错误 toast
     }
   },
