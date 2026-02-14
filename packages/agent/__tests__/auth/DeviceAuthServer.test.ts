@@ -98,4 +98,45 @@ describe('DeviceAuthServer', () => {
       server = null; // prevent double-close in afterEach
     });
   });
+
+  describe('expires_at validation', () => {
+    it('should return 400 for invalid expires_at', async () => {
+      server = new DeviceAuthServer();
+      const { port } = await server.start(CLOUD_URL);
+
+      const response = await fetch(
+        `http://localhost:${port}/callback?access_token=test&refresh_token=test&expires_at=abc&user_id=test&supabase_url=https://test.supabase.co&anon_key=test`
+      );
+
+      expect(response.status).toBe(400);
+      const text = await response.text();
+      expect(text).toContain('Invalid expires_at');
+    });
+
+    it('should return 400 for negative expires_at', async () => {
+      server = new DeviceAuthServer();
+      const { port } = await server.start(CLOUD_URL);
+
+      const response = await fetch(
+        `http://localhost:${port}/callback?access_token=test&refresh_token=test&expires_at=-1&user_id=test&supabase_url=https://test.supabase.co&anon_key=test`
+      );
+
+      expect(response.status).toBe(400);
+      const text = await response.text();
+      expect(text).toContain('Invalid expires_at');
+    });
+
+    it('should return 400 for zero expires_at', async () => {
+      server = new DeviceAuthServer();
+      const { port } = await server.start(CLOUD_URL);
+
+      const response = await fetch(
+        `http://localhost:${port}/callback?access_token=test&refresh_token=test&expires_at=0&user_id=test&supabase_url=https://test.supabase.co&anon_key=test`
+      );
+
+      expect(response.status).toBe(400);
+      const text = await response.text();
+      expect(text).toContain('Invalid expires_at');
+    });
+  });
 });

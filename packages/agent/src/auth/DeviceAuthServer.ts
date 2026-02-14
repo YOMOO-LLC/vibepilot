@@ -144,11 +144,31 @@ export class DeviceAuthServer {
       return;
     }
 
+    // Validate expires_at parameter
+    const expiresAtSeconds = parseInt(url.searchParams.get('expires_at')!, 10);
+    if (isNaN(expiresAtSeconds) || expiresAtSeconds <= 0) {
+      const msg = 'Invalid expires_at: must be a positive number';
+      const isJsonRequest = req.headers.accept?.includes('application/json');
+      if (isJsonRequest) {
+        res.writeHead(400, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          ...cors,
+        });
+        res.end(JSON.stringify({ error: msg }));
+      } else {
+        res.writeHead(400, { 'Content-Type': 'text/html', 'Cache-Control': 'no-store', ...cors });
+        res.end(ERROR_HTML(msg));
+      }
+      this.reject?.(new Error(msg));
+      return;
+    }
+
     // Extract tokens and convert expires_at from seconds to milliseconds
     const result: CallbackResult = {
       accessToken: url.searchParams.get('access_token')!,
       refreshToken: url.searchParams.get('refresh_token')!,
-      expiresAt: parseInt(url.searchParams.get('expires_at')!, 10) * 1000,
+      expiresAt: expiresAtSeconds * 1000,
       userId: url.searchParams.get('user_id')!,
       supabaseUrl: url.searchParams.get('supabase_url')!,
       anonKey: url.searchParams.get('anon_key')!,

@@ -142,4 +142,7 @@
 - [ ] Issue #3: Publication 检查修复 (Phase 2)
 - [ ] Issue #4: 约束命名统一 (Phase 5)
 - [ ] Issue #5: Schema 限定添加 (Phase 5)
-- [ ] Issue #6: Agent-Web 参数匹配 (Task 4-6) **🔴 P0**
+- [x] Issue #6: Agent-Web 参数匹配 ✅ **已解决** (Task 5-6)
+  - **解决日期**: 2026-02-13
+  - **修复提交**: bc5365a (DeviceAuthServer), f40c78e (CLI auth:login)
+  - **验证**: 351/351 测试通过，端到端认证流程可用

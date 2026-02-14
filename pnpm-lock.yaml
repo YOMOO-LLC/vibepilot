@@ -150,6 +150,9 @@ importers:
       '@inquirer/prompts':
         specifier: ^8.2.0
         version: 8.2.0(@types/node@22.19.9)
+      '@supabase/supabase-js':
+        specifier: ^2.95.3
+        version: 2.95.3
       '@vibepilot/protocol':
         specifier: workspace:*
         version: link:../protocol
