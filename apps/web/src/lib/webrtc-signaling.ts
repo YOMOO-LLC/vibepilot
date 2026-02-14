@@ -41,11 +41,21 @@ export class WebRTCSignaling {
     let retries = 0;
 
     while (retries < RETRY_CONFIG.maxRetries) {
+      let client: VPWebRTCClient | null = null;
       try {
-        const client = new VPWebRTCClient();
+        client = new VPWebRTCClient();
         await this.attemptConnection(agentId, client, onStateChange);
         return client;
       } catch (err: any) {
+        // Clean up failed client
+        if (client) {
+          try {
+            client.close();
+          } catch (closeErr) {
+            console.error('[WebRTCSignaling] Failed to close client:', closeErr);
+          }
+        }
+
         retries++;
         if (retries < RETRY_CONFIG.maxRetries) {
           onStateChange('retrying', { attempt: retries, maxRetries: RETRY_CONFIG.maxRetries });
@@ -96,36 +106,53 @@ export class WebRTCSignaling {
 
     onStateChange('creating-offer');
 
-    // 5. Create and send offer
-    await client.createOffer(
-      // onSignal: Send signaling messages
-      (msg) => {
-        signalingChannel
-          .send({
-            type: 'broadcast',
-            event:
-              msg.type === 'signal-offer'
-                ? 'offer'
-                : msg.type === 'signal-candidate'
-                  ? 'candidate'
-                  : 'unknown',
-            payload: msg.payload,
-          })
-          .catch((err) => {
-            console.error('[WebRTCSignaling] Failed to send signal:', err);
-          });
-      },
-      // onStateChange: WebRTC state changes
-      (state) => {
+    // 5. Create promise that resolves when WebRTC connects
+    const connectionPromise = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        reject(new Error('WebRTC connection timeout'));
+      }, TIMEOUT_CONFIG.waitConnection);
+
+      // Use the callback to resolve promise
+      const stateCallback = (state: string) => {
         if (state === 'connected') {
+          clearTimeout(timer);
           onStateChange('connected');
+          resolve();
+        } else if (state === 'failed') {
+          clearTimeout(timer);
+          reject(new Error('WebRTC connection failed'));
         }
-      }
-    );
+      };
+
+      // 6. Create and send offer with state callback
+      client
+        .createOffer(
+          // onSignal: Send signaling messages
+          (msg) => {
+            signalingChannel
+              .send({
+                type: 'broadcast',
+                event:
+                  msg.type === 'signal-offer'
+                    ? 'offer'
+                    : msg.type === 'signal-candidate'
+                      ? 'candidate'
+                      : 'unknown',
+                payload: msg.payload,
+              })
+              .catch((err) => {
+                console.error('[WebRTCSignaling] Failed to send signal:', err);
+              });
+          },
+          // onStateChange: WebRTC state changes
+          stateCallback
+        )
+        .catch(reject);
+    });
 
     onStateChange('waiting-answer');
 
-    // 6. Wait for answer (10s timeout)
+    // 7. Wait for answer (10s timeout)
     const answer = await this.waitForAnswer(signalingChannel, TIMEOUT_CONFIG.waitAnswer);
     if (!answer) {
       await signalingChannel.unsubscribe();
@@ -137,13 +164,13 @@ export class WebRTCSignaling {
 
     onStateChange('connecting');
 
-    // 7. Setup ICE exchange
+    // 8. Setup ICE exchange
     this.setupIceExchange(client, signalingChannel);
 
-    // 8. Wait for connection success (15s timeout)
-    await this.waitForConnection(client, TIMEOUT_CONFIG.waitConnection);
+    // 9. Wait for connection using the promise
+    await connectionPromise;
 
-    // 9. Cleanup signaling channel
+    // 10. Cleanup signaling channel
     await signalingChannel.unsubscribe();
     // Keep presence channel open (may be needed by other features)
   }
@@ -209,38 +236,6 @@ export class WebRTCSignaling {
         });
       }
     );
-  }
-
-  /**
-   * Wait for connection success (private)
-   */
-  private async waitForConnection(client: VPWebRTCClient, timeout: number): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        reject(new Error('WebRTC connection timeout'));
-      }, timeout);
-
-      // Check current state
-      if (client.state === 'connected') {
-        clearTimeout(timer);
-        resolve();
-        return;
-      }
-
-      // Monitor state changes (createOffer already set onStateChange)
-      // Poll state every 100ms
-      const checkInterval = setInterval(() => {
-        if (client.state === 'connected') {
-          clearTimeout(timer);
-          clearInterval(checkInterval);
-          resolve();
-        } else if (client.state === 'failed') {
-          clearTimeout(timer);
-          clearInterval(checkInterval);
-          reject(new Error('WebRTC connection failed'));
-        }
-      }, 100);
-    });
   }
 
   /**
