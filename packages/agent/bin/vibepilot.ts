@@ -463,7 +463,7 @@ program
         anonKey: finalAnonKey,
         accessToken: result.accessToken,
         refreshToken: result.refreshToken,
-        expiresAt: Date.now() + result.expiresIn * 1000,
+        expiresAt: result.expiresAt,
         userId,
         email: '', // Will be populated on next status check
         createdAt: Date.now(),

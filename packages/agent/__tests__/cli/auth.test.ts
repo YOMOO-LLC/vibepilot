@@ -130,7 +130,8 @@ describe('CLI auth commands', () => {
       mockDeviceServer.waitForCallback.mockResolvedValue({
         accessToken: 'test-access',
         refreshToken: 'test-refresh',
-        expiresIn: 3600,
+        expiresAt: Date.now() + 3600 * 1000,
+        userId: 'test-user-id',
         supabaseUrl: 'https://xyz.supabase.co',
         anonKey: 'test-anon',
       });

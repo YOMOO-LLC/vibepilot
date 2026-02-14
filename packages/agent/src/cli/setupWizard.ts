@@ -212,7 +212,7 @@ async function runDeviceAuth(
       anonKey,
       accessToken: callbackResult.accessToken,
       refreshToken: callbackResult.refreshToken,
-      expiresAt: Date.now() + callbackResult.expiresIn * 1000,
+      expiresAt: callbackResult.expiresAt,
       userId,
       email: '',
       createdAt: Date.now(),

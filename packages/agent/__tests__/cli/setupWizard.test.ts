@@ -119,7 +119,8 @@ describe('runSetupWizard', () => {
     mockDeviceServer.waitForCallback.mockResolvedValue({
       accessToken: 'cloud-access-token',
       refreshToken: 'cloud-refresh-token',
-      expiresIn: 3600,
+      expiresAt: Date.now() + 3600 * 1000,
+      userId: 'test-user-id',
       supabaseUrl: 'https://xyz.supabase.co',
       anonKey: 'test-anon-key',
     });
@@ -166,7 +167,8 @@ describe('runSetupWizard', () => {
     mockDeviceServer.waitForCallback.mockResolvedValue({
       accessToken: 'sh-access-token',
       refreshToken: 'sh-refresh-token',
-      expiresIn: 3600,
+      expiresAt: Date.now() + 3600 * 1000,
+      userId: 'test-user-id-2',
       supabaseUrl: 'https://my-supabase.supabase.co',
       anonKey: 'my-anon-key-123',
     });
