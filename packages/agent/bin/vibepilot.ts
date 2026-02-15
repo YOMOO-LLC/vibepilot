@@ -19,6 +19,7 @@ import type { AuthProvider } from '../src/auth/AuthProvider.js';
 import type { AgentRegistry } from '../src/registry/AgentRegistry.js';
 import { RealtimePresence } from '../src/transport/RealtimePresence.js';
 import { createClient } from '@supabase/supabase-js';
+import { checkNodePtyPermissions } from '../src/utils/checkNodePty.js';
 
 const program = new Command();
 
@@ -52,6 +53,9 @@ program
     'Owner user UUID for Supabase agent registration (only needed with --supabase-key)'
   )
   .action(async (opts, cmd) => {
+    // ── Check node-pty permissions (prevent posix_spawnp errors) ──
+    checkNodePtyPermissions();
+
     // ── First-run setup wizard ──────────────────────────────────
     const configManager = new ConfigManager();
     if (!(await configManager.exists())) {
