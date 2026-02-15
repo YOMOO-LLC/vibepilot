@@ -12,6 +12,10 @@ export const MessageType = {
   TERMINAL_CWD: 'terminal:cwd',
   TERMINAL_ATTACH: 'terminal:attach',
   TERMINAL_ATTACHED: 'terminal:attached',
+  TERMINAL_SUBSCRIBE: 'terminal:subscribe',
+  TERMINAL_SUBSCRIBED: 'terminal:subscribed',
+  TERMINAL_LIST_SESSIONS: 'terminal:list-sessions',
+  TERMINAL_SESSIONS: 'terminal:sessions',
 
   // File tree
   FILETREE_LIST: 'filetree:list',
@@ -64,6 +68,14 @@ export const MessageType = {
   BROWSER_NAVIGATED: 'browser:navigated',
   BROWSER_CURSOR: 'browser:cursor',
   BROWSER_RESIZE: 'browser:resize',
+
+  // HTTP Tunnel (4)
+  TUNNEL_OPEN: 'tunnel:open',
+  TUNNEL_OPENED: 'tunnel:opened',
+  TUNNEL_REQUEST: 'tunnel:request',
+  TUNNEL_RESPONSE: 'tunnel:response',
+  TUNNEL_CLOSE: 'tunnel:close',
+  TUNNEL_ERROR: 'tunnel:error',
 } as const;
 
 export type MessageTypeValue = (typeof MessageType)[keyof typeof MessageType];

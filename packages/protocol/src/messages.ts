@@ -66,6 +66,27 @@ export interface TerminalAttachedPayload {
   bufferedOutput: string;
 }
 
+export interface TerminalSubscribePayload {
+  sessionId: string;
+}
+
+export interface TerminalSubscribedPayload {
+  sessionId: string;
+  creatorClientId: string;
+}
+
+export interface TerminalListSessionsPayload {}
+
+export interface TerminalSessionInfo {
+  sessionId: string;
+  creatorClientId: string;
+  pid: number;
+}
+
+export interface TerminalSessionsPayload {
+  sessions: TerminalSessionInfo[];
+}
+
 // --- File Tree Messages ---
 
 export interface FileTreeListPayload {
@@ -297,6 +318,47 @@ export interface BrowserResizePayload {
   height: number;
 }
 
+// --- HTTP Tunnel Messages ---
+
+export interface TunnelOpenPayload {
+  tunnelId: string;
+  targetPort: number;
+  targetHost?: string; // defaults to '127.0.0.1'
+}
+
+export interface TunnelOpenedPayload {
+  tunnelId: string;
+  targetPort: number;
+}
+
+export interface TunnelRequestPayload {
+  tunnelId: string;
+  requestId: string;
+  method: string;
+  path: string;
+  headers: Record<string, string>;
+  body?: string; // base64-encoded for binary data
+}
+
+export interface TunnelResponsePayload {
+  tunnelId: string;
+  requestId: string;
+  status: number;
+  headers: Record<string, string>;
+  body?: string; // base64-encoded
+}
+
+export interface TunnelClosePayload {
+  tunnelId: string;
+}
+
+export interface TunnelErrorPayload {
+  tunnelId: string;
+  requestId?: string;
+  error: string;
+  code?: string;
+}
+
 // --- Message type map ---
 
 export interface MessagePayloadMap {
@@ -310,6 +372,10 @@ export interface MessagePayloadMap {
   [MessageType.TERMINAL_CWD]: TerminalCwdPayload;
   [MessageType.TERMINAL_ATTACH]: TerminalAttachPayload;
   [MessageType.TERMINAL_ATTACHED]: TerminalAttachedPayload;
+  [MessageType.TERMINAL_SUBSCRIBE]: TerminalSubscribePayload;
+  [MessageType.TERMINAL_SUBSCRIBED]: TerminalSubscribedPayload;
+  [MessageType.TERMINAL_LIST_SESSIONS]: TerminalListSessionsPayload;
+  [MessageType.TERMINAL_SESSIONS]: TerminalSessionsPayload;
   [MessageType.FILETREE_LIST]: FileTreeListPayload;
   [MessageType.FILETREE_DATA]: FileTreeDataPayload;
   [MessageType.FILETREE_CHANGED]: FileTreeChangedPayload;
@@ -350,6 +416,12 @@ export interface MessagePayloadMap {
   [MessageType.BROWSER_NAVIGATED]: BrowserNavigatedPayload;
   [MessageType.BROWSER_CURSOR]: BrowserCursorPayload;
   [MessageType.BROWSER_RESIZE]: BrowserResizePayload;
+  [MessageType.TUNNEL_OPEN]: TunnelOpenPayload;
+  [MessageType.TUNNEL_OPENED]: TunnelOpenedPayload;
+  [MessageType.TUNNEL_REQUEST]: TunnelRequestPayload;
+  [MessageType.TUNNEL_RESPONSE]: TunnelResponsePayload;
+  [MessageType.TUNNEL_CLOSE]: TunnelClosePayload;
+  [MessageType.TUNNEL_ERROR]: TunnelErrorPayload;
 }
 
 // --- Helper functions ---
