@@ -23,7 +23,7 @@
     "@vibepilot/protocol": "workspace:*",
     "ws": "^8.18.0",
     "uuid": "^11.0.0",
-    "pino": "^9.0.0",
+    "pino": "^10.3.1",
     "pino-pretty": "^13.0.0"
   },
   "devDependencies": {
