@@ -12,3 +12,8 @@ coverage/
 /supabase/.branches
 /supabase/.temp
 /docs/plans
+.vercel
+
+# Environment files (including production)
+.env.production
+.env*.local
