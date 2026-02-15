@@ -14,6 +14,10 @@ import {
   type TerminalResizePayload,
   type TerminalDestroyPayload,
   type TerminalAttachPayload,
+  type TerminalSubscribePayload,
+  type TunnelOpenPayload,
+  type TunnelRequestPayload,
+  type TunnelClosePayload,
   type FileTreeListPayload,
   type ProjectSwitchPayload,
   type ProjectAddPayload,
@@ -41,6 +45,7 @@ import { FileContentService } from '../fs/FileContentService.js';
 import { ImageReceiver } from '../image/ImageReceiver.js';
 import { BrowserService } from '../browser/BrowserService.js';
 import { McpConfigManager } from '../browser/McpConfigManager.js';
+import { TunnelProxy } from './TunnelProxy.js';
 
 export interface VPWebSocketServerOptions {
   port: number;
@@ -50,8 +55,10 @@ export interface VPWebSocketServerOptions {
 }
 
 interface ClientState {
+  clientId: string;
   ws: WebSocket;
   sessionIds: Set<string>;
+  subscribedSessionIds: Set<string>;
   signalingHandler?: SignalingHandler;
   webrtcPeer?: WebRTCPeer;
 }
@@ -59,6 +66,11 @@ interface ClientState {
 interface SessionOwner {
   ws: WebSocket;
   state: ClientState;
+}
+
+interface SessionMeta {
+  creatorClientId: string;
+  subscribers: Set<WebSocket>;
 }
 
 export class VPWebSocketServer {
@@ -74,6 +86,8 @@ export class VPWebSocketServer {
     { timer: ReturnType<typeof setInterval>; lastCwd: string }
   >();
   private sessionOwners = new Map<string, SessionOwner>();
+  private sessionMeta = new Map<string, SessionMeta>();
+  private clientIdCounter = 0;
   private port: number;
   private cwd: string;
   private projectManager: ProjectManager;
@@ -83,6 +97,7 @@ export class VPWebSocketServer {
   private browserService: BrowserService;
   private browserClient: WebSocket | null = null;
   private mcpConfigManager: McpConfigManager | null = null;
+  private tunnelProxy = new TunnelProxy();
   private authProvider?: AuthProvider;
 
   constructor(options: VPWebSocketServerOptions) {
@@ -155,6 +170,7 @@ export class VPWebSocketServer {
   }
 
   async stop(): Promise<void> {
+    this.tunnelProxy.closeAll();
     this.sessionPersistence.destroyAll();
     this.ptyManager.destroyAll();
     await this.browserService.stop();
@@ -245,7 +261,13 @@ export class VPWebSocketServer {
   }
 
   private handleConnection(ws: WebSocket): void {
-    const state: ClientState = { ws, sessionIds: new Set() };
+    const clientId = `client-${++this.clientIdCounter}-${Date.now()}`;
+    const state: ClientState = {
+      clientId,
+      ws,
+      sessionIds: new Set(),
+      subscribedSessionIds: new Set(),
+    };
     this.clients.set(ws, state);
 
     ws.on('message', (data) => {
@@ -299,6 +321,12 @@ export class VPWebSocketServer {
         break;
       case MessageType.TERMINAL_ATTACH:
         this.handleTerminalAttach(ws, state, msg.payload as TerminalAttachPayload);
+        break;
+      case MessageType.TERMINAL_SUBSCRIBE:
+        this.handleTerminalSubscribe(ws, state, msg.payload as TerminalSubscribePayload);
+        break;
+      case MessageType.TERMINAL_LIST_SESSIONS:
+        this.handleTerminalListSessions(ws);
         break;
       case MessageType.TERMINAL_INPUT:
         this.handleTerminalInput(msg.payload as TerminalInputPayload);
@@ -430,6 +458,16 @@ export class VPWebSocketServer {
         this.browserService.ackFrame(timestamp).catch(() => {});
         break;
       }
+
+      case MessageType.TUNNEL_OPEN:
+        this.handleTunnelOpen(ws, msg.payload as TunnelOpenPayload);
+        break;
+      case MessageType.TUNNEL_REQUEST:
+        this.handleTunnelRequest(ws, msg.payload as TunnelRequestPayload);
+        break;
+      case MessageType.TUNNEL_CLOSE:
+        this.handleTunnelClose(msg.payload as TunnelClosePayload);
+        break;
     }
   }
 
@@ -475,6 +513,10 @@ export class VPWebSocketServer {
 
       state.sessionIds.add(sessionId);
       this.sessionOwners.set(sessionId, { ws, state });
+      this.sessionMeta.set(sessionId, {
+        creatorClientId: state.clientId,
+        subscribers: new Set([ws]),
+      });
 
       // Start tracking cwd changes for this session
       this.startCwdTracking(sessionId, effectiveCwd);
@@ -484,16 +526,14 @@ export class VPWebSocketServer {
       return;
     }
 
-    // Forward PTY output to client via delegate
+    // Forward PTY output to all subscribers (owner + read-only subscribers)
     this.ptyManager.onOutput(sessionId, (data) => {
-      const owner = this.sessionOwners.get(sessionId);
-      if (owner && owner.ws.readyState === WebSocket.OPEN) {
-        const outputMsg = createMessage(MessageType.TERMINAL_OUTPUT, {
-          sessionId,
-          data,
-        });
-        owner.ws.send(JSON.stringify(outputMsg));
-      }
+      const outputMsg = createMessage(MessageType.TERMINAL_OUTPUT, {
+        sessionId,
+        data,
+      });
+      const msgStr = JSON.stringify(outputMsg);
+      this.broadcastToSubscribers(sessionId, msgStr);
     });
 
     // Handle PTY exit
@@ -502,19 +542,32 @@ export class VPWebSocketServer {
       if (this.sessionPersistence.isOrphaned(sessionId)) {
         this.sessionPersistence.handleOrphanedExit(sessionId);
         this.sessionOwners.delete(sessionId);
+        this.sessionMeta.delete(sessionId);
         return;
       }
 
-      const owner = this.sessionOwners.get(sessionId);
-      if (owner && owner.ws.readyState === WebSocket.OPEN) {
-        const destroyedMsg = createMessage(MessageType.TERMINAL_DESTROYED, {
-          sessionId,
-          exitCode,
-        });
-        owner.ws.send(JSON.stringify(destroyedMsg));
+      // Notify all subscribers about session destruction
+      const destroyedMsg = createMessage(MessageType.TERMINAL_DESTROYED, {
+        sessionId,
+        exitCode,
+      });
+      this.broadcastToSubscribers(sessionId, JSON.stringify(destroyedMsg));
+
+      // Clean up subscriber tracking
+      const meta = this.sessionMeta.get(sessionId);
+      if (meta) {
+        for (const sub of meta.subscribers) {
+          const subState = this.clients.get(sub);
+          if (subState) {
+            subState.subscribedSessionIds.delete(sessionId);
+          }
+        }
       }
+
+      const owner = this.sessionOwners.get(sessionId);
       owner?.state.sessionIds.delete(sessionId);
       this.sessionOwners.delete(sessionId);
+      this.sessionMeta.delete(sessionId);
     });
 
     // Send created response
@@ -551,6 +604,17 @@ export class VPWebSocketServer {
     state.sessionIds.add(sessionId);
     this.sessionOwners.set(sessionId, { ws, state });
 
+    // Restore or create session meta with the new owner as subscriber
+    const existingMeta = this.sessionMeta.get(sessionId);
+    if (existingMeta) {
+      existingMeta.subscribers.add(ws);
+    } else {
+      this.sessionMeta.set(sessionId, {
+        creatorClientId: state.clientId,
+        subscribers: new Set([ws]),
+      });
+    }
+
     // Resize if dimensions provided
     if (cols && rows) {
       try {
@@ -562,14 +626,11 @@ export class VPWebSocketServer {
 
     // Attach new output sink and get buffered data
     const bufferedOutput = this.ptyManager.attachOutput(sessionId, (data) => {
-      const owner = this.sessionOwners.get(sessionId);
-      if (owner && owner.ws.readyState === WebSocket.OPEN) {
-        const outputMsg = createMessage(MessageType.TERMINAL_OUTPUT, {
-          sessionId,
-          data,
-        });
-        owner.ws.send(JSON.stringify(outputMsg));
-      }
+      const outputMsg = createMessage(MessageType.TERMINAL_OUTPUT, {
+        sessionId,
+        data,
+      });
+      this.broadcastToSubscribers(sessionId, JSON.stringify(outputMsg));
     });
 
     // Resume CWD tracking
@@ -589,14 +650,11 @@ export class VPWebSocketServer {
 
   private startCwdTracking(sessionId: string, initialCwd: string): void {
     const sendCwd = (cwd: string) => {
-      const owner = this.sessionOwners.get(sessionId);
-      if (owner && owner.ws.readyState === WebSocket.OPEN) {
-        const msg = createMessage(MessageType.TERMINAL_CWD, {
-          sessionId,
-          cwd,
-        } as TerminalCwdPayload);
-        owner.ws.send(JSON.stringify(msg));
-      }
+      const msg = createMessage(MessageType.TERMINAL_CWD, {
+        sessionId,
+        cwd,
+      } as TerminalCwdPayload);
+      this.broadcastToSubscribers(sessionId, JSON.stringify(msg));
     };
 
     // Send initial cwd immediately
@@ -662,6 +720,83 @@ export class VPWebSocketServer {
     this.ptyManager.destroy(sessionId);
     state.sessionIds.delete(sessionId);
     this.sessionOwners.delete(sessionId);
+    this.sessionMeta.delete(sessionId);
+  }
+
+  private handleTerminalSubscribe(
+    ws: WebSocket,
+    state: ClientState,
+    payload: TerminalSubscribePayload
+  ): void {
+    const { sessionId } = payload;
+
+    // Check if session exists
+    if (!this.ptyManager.hasSession(sessionId)) {
+      const response = createMessage(MessageType.TERMINAL_DESTROYED, {
+        sessionId,
+        exitCode: -1,
+      });
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(response));
+      }
+      return;
+    }
+
+    // Add this client as a subscriber
+    const meta = this.sessionMeta.get(sessionId);
+    if (meta) {
+      meta.subscribers.add(ws);
+    }
+    state.subscribedSessionIds.add(sessionId);
+
+    // Send subscribed confirmation
+    const response = createMessage(MessageType.TERMINAL_SUBSCRIBED, {
+      sessionId,
+      creatorClientId: meta?.creatorClientId || 'unknown',
+    });
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(response));
+    }
+  }
+
+  private handleTerminalListSessions(ws: WebSocket): void {
+    const sessions: Array<{ sessionId: string; creatorClientId: string; pid: number }> = [];
+
+    for (const [sessionId, meta] of this.sessionMeta) {
+      if (this.ptyManager.hasSession(sessionId)) {
+        const pid = this.ptyManager.getPid(sessionId);
+        if (pid !== null) {
+          sessions.push({
+            sessionId,
+            creatorClientId: meta.creatorClientId,
+            pid,
+          });
+        }
+      }
+    }
+
+    const response = createMessage(MessageType.TERMINAL_SESSIONS, { sessions });
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(response));
+    }
+  }
+
+  private broadcastToSubscribers(sessionId: string, msgStr: string): void {
+    const meta = this.sessionMeta.get(sessionId);
+    if (!meta) {
+      // Fallback: send to owner only
+      const owner = this.sessionOwners.get(sessionId);
+      if (owner && owner.ws.readyState === WebSocket.OPEN) {
+        owner.ws.send(msgStr);
+      }
+      return;
+    }
+
+    for (const sub of meta.subscribers) {
+      if (sub.readyState === WebSocket.OPEN) {
+        sub.send(msgStr);
+      }
+    }
   }
 
   private handleDisconnect(state: ClientState): void {
@@ -679,7 +814,22 @@ export class VPWebSocketServer {
       });
     }
 
+    // Remove this client from all session subscriber lists
+    for (const sessionId of state.subscribedSessionIds) {
+      const meta = this.sessionMeta.get(sessionId);
+      if (meta) {
+        meta.subscribers.delete(state.ws);
+      }
+    }
+    state.subscribedSessionIds.clear();
+
     for (const sessionId of state.sessionIds) {
+      // Remove from subscribers
+      const meta = this.sessionMeta.get(sessionId);
+      if (meta) {
+        meta.subscribers.delete(state.ws);
+      }
+
       if (this.ptyManager.hasSession(sessionId) && !this.ptyManager.isExited(sessionId)) {
         // Orphan the session instead of destroying
         const lastCwd = this.pauseCwdTracking(sessionId);
@@ -690,6 +840,7 @@ export class VPWebSocketServer {
         this.stopCwdTracking(sessionId);
         this.ptyManager.destroy(sessionId);
         this.sessionOwners.delete(sessionId);
+        this.sessionMeta.delete(sessionId);
       }
     }
     state.sessionIds.clear();
@@ -908,6 +1059,63 @@ export class VPWebSocketServer {
     } catch (error) {
       console.error('Error completing image transfer:', error);
     }
+  }
+
+  private handleTunnelOpen(ws: WebSocket, payload: TunnelOpenPayload): void {
+    try {
+      this.tunnelProxy.open(payload.tunnelId, payload.targetPort, payload.targetHost);
+      const response = createMessage(MessageType.TUNNEL_OPENED, {
+        tunnelId: payload.tunnelId,
+        targetPort: payload.targetPort,
+      });
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(response));
+      }
+    } catch (err: any) {
+      const response = createMessage(MessageType.TUNNEL_ERROR, {
+        tunnelId: payload.tunnelId,
+        error: err.message,
+      });
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(response));
+      }
+    }
+  }
+
+  private async handleTunnelRequest(ws: WebSocket, payload: TunnelRequestPayload): Promise<void> {
+    try {
+      const result = await this.tunnelProxy.forward(payload.tunnelId, {
+        requestId: payload.requestId,
+        method: payload.method,
+        path: payload.path,
+        headers: payload.headers,
+        body: payload.body,
+      });
+      const response = createMessage(MessageType.TUNNEL_RESPONSE, {
+        tunnelId: payload.tunnelId,
+        requestId: result.requestId,
+        status: result.status,
+        headers: result.headers,
+        body: result.body,
+      });
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(response));
+      }
+    } catch (err: any) {
+      const response = createMessage(MessageType.TUNNEL_ERROR, {
+        tunnelId: payload.tunnelId,
+        requestId: payload.requestId,
+        error: err.message,
+        code: 'PROXY_ERROR',
+      });
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify(response));
+      }
+    }
+  }
+
+  private handleTunnelClose(payload: TunnelClosePayload): void {
+    this.tunnelProxy.close(payload.tunnelId);
   }
 
   private broadcastFileChange(
