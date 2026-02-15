@@ -20,7 +20,17 @@ function createMockChannel(name: string): any {
 
   return {
     topic: name,
-    subscribe: vi.fn().mockResolvedValue({ status: 'subscribed' }),
+    state: 'joined',
+    subscribe: vi.fn((callback?: Function) => {
+      // Support callback-based subscription (Supabase Realtime v2 style)
+      if (callback) {
+        // Immediately invoke callback with success status
+        setTimeout(() => callback('SUBSCRIBED', null), 0);
+        return { status: 'ok' };
+      }
+      // Support promise-based subscription (legacy)
+      return Promise.resolve({ status: 'subscribed' });
+    }),
     unsubscribe: vi.fn().mockResolvedValue({ status: 'unsubscribed' }),
     send: vi.fn().mockResolvedValue({ status: 'ok' }),
     on: vi.fn((type: string, filter: any, callback: Function) => {
@@ -87,8 +97,8 @@ describe('WebRTCSignaling (Web)', () => {
       const presenceChannel = mockSupabase.channel('user:user-123:agents');
       const connectPromise = signaling.connect('agent-456', onStateChange);
 
-      // Verify REQUEST sent
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      // Verify REQUEST sent (wait for subscription callback to complete)
+      await new Promise((resolve) => setTimeout(resolve, 50));
       expect(presenceChannel.send).toHaveBeenCalledWith({
         type: 'broadcast',
         event: 'connection-request',
@@ -97,12 +107,12 @@ describe('WebRTCSignaling (Web)', () => {
 
       // Simulate Agent READY response
       await new Promise((resolve) => setTimeout(resolve, 10));
-      presenceChannel.trigger('connection-ready', { agentId: 'agent-456' });
+      presenceChannel.trigger('connection-ready', { payload: { agentId: 'agent-456' } });
 
       // Simulate answer after offer created
       await new Promise((resolve) => setTimeout(resolve, 50));
       const signalingChannel = mockSupabase.channel('agent:agent-456:signaling');
-      signalingChannel.trigger('answer', { sdp: 'answer-sdp' });
+      signalingChannel.trigger('answer', { payload: { sdp: 'answer-sdp' } });
 
       // Simulate WebRTC connected
       await new Promise((resolve) => setTimeout(resolve, 50));
@@ -165,6 +175,40 @@ describe('WebRTCSignaling (Web)', () => {
 
     it('should retry 3 times on failure', async () => {
       vi.useFakeTimers();
+
+      // Override subscribe to work with fake timers
+      const channels = new Map();
+      mockSupabase.channel = vi.fn((name: string) => {
+        if (!channels.has(name)) {
+          const listeners = new Map<string, Set<Function>>();
+          const mockChan = {
+            topic: name,
+            state: 'joined',
+            subscribe: vi.fn((callback?: Function) => {
+              // Use fake timer-compatible immediate execution
+              if (callback) {
+                queueMicrotask(() => callback('SUBSCRIBED', null));
+                return { status: 'ok' };
+              }
+              return Promise.resolve({ status: 'subscribed' });
+            }),
+            unsubscribe: vi.fn().mockResolvedValue({ status: 'unsubscribed' }),
+            send: vi.fn().mockResolvedValue({ status: 'ok' }),
+            on: vi.fn((type: string, filter: any, cb: Function) => {
+              const key = `${type}:${filter.event}`;
+              if (!listeners.has(key)) listeners.set(key, new Set());
+              listeners.get(key)!.add(cb);
+              return { unsubscribe: () => listeners.get(key)?.delete(cb) };
+            }),
+            trigger: (event: string, payload: any) => {
+              const key = `broadcast:${event}`;
+              listeners.get(key)?.forEach((cb) => cb(payload));
+            },
+          };
+          channels.set(name, mockChan);
+        }
+        return channels.get(name);
+      });
 
       // Force waitForReady to always timeout
       const onStateChange = vi.fn();

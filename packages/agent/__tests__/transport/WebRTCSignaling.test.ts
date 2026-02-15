@@ -15,7 +15,17 @@ function createMockChannel(name: string): any {
 
   return {
     topic: name,
-    subscribe: vi.fn().mockResolvedValue({ status: 'subscribed' }),
+    state: 'joined',
+    subscribe: vi.fn((callback?: Function) => {
+      // Support callback-based subscription (Supabase Realtime v2 style)
+      if (callback) {
+        // Immediately invoke callback with success status
+        setTimeout(() => callback('SUBSCRIBED', null), 0);
+        return { status: 'ok' };
+      }
+      // Support promise-based subscription (legacy)
+      return Promise.resolve({ status: 'subscribed' });
+    }),
     unsubscribe: vi.fn().mockResolvedValue({ status: 'unsubscribed' }),
     send: vi.fn().mockResolvedValue({ status: 'ok' }),
     on: vi.fn((type: string, filter: any, callback: Function) => {
@@ -73,7 +83,7 @@ describe('WebRTCSignaling (Agent)', () => {
     it('should ignore requests for other agents', async () => {
       await signaling.start(mockPresenceChannel);
 
-      mockPresenceChannel.trigger('connection-request', { agentId: 'other-agent' });
+      mockPresenceChannel.trigger('connection-request', { payload: { agentId: 'other-agent' } });
 
       // Should not create signaling channel
       expect(mockSupabase.channel).toHaveBeenCalledTimes(1); // Only presence channel
@@ -82,13 +92,15 @@ describe('WebRTCSignaling (Agent)', () => {
     it('should create signaling channel and reply READY', async () => {
       await signaling.start(mockPresenceChannel);
 
-      mockPresenceChannel.trigger('connection-request', { agentId: 'agent-456' });
+      mockPresenceChannel.trigger('connection-request', { payload: { agentId: 'agent-456' } });
 
-      // Wait for async processing
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      // Wait for async processing (subscription callback + promise resolution)
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
       // Should create signaling channel
-      expect(mockSupabase.channel).toHaveBeenCalledWith('agent:agent-456:signaling');
+      expect(mockSupabase.channel).toHaveBeenCalledWith('agent:agent-456:signaling', {
+        config: { broadcast: { self: false } },
+      });
 
       // Should reply READY
       expect(mockPresenceChannel.send).toHaveBeenCalledWith({
@@ -103,13 +115,14 @@ describe('WebRTCSignaling (Agent)', () => {
 
       try {
         await signaling.start(mockPresenceChannel);
-        mockPresenceChannel.trigger('connection-request', { agentId: 'agent-456' });
+        mockPresenceChannel.trigger('connection-request', { payload: { agentId: 'agent-456' } });
 
+        // Run immediate timers to complete subscription callback
         await vi.runAllTimersAsync();
 
         const signalingChannel = mockSupabase.channel('agent:agent-456:signaling');
 
-        // 2 minutes later should cleanup
+        // Advance 2 minutes to trigger cleanup
         await vi.advanceTimersByTimeAsync(120_000);
 
         expect(signalingChannel.unsubscribe).toHaveBeenCalled();
@@ -133,16 +146,18 @@ describe('WebRTCSignaling (Agent)', () => {
       vi.mocked(WebRTCPeer).mockImplementation(() => mockPeer as any);
 
       await signaling.start(mockPresenceChannel);
-      mockPresenceChannel.trigger('connection-request', { agentId: 'agent-456' });
+      mockPresenceChannel.trigger('connection-request', { payload: { agentId: 'agent-456' } });
 
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      // Wait for connection-request handling to complete
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
       const signalingChannel = mockSupabase.channel('agent:agent-456:signaling');
 
-      // Trigger offer
-      signalingChannel.trigger('offer', { sdp: 'offer-sdp' });
+      // Trigger offer with correct payload structure
+      signalingChannel.trigger('offer', { payload: { sdp: 'offer-sdp' } });
 
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      // Wait for offer handling to complete
+      await new Promise((resolve) => setTimeout(resolve, 50));
 
       expect(mockPeer.handleOffer).toHaveBeenCalledWith('offer-sdp');
       expect(signalingChannel.send).toHaveBeenCalledWith({
