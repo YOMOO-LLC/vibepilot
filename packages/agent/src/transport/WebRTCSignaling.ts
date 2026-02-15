@@ -155,16 +155,29 @@ export class WebRTCSignaling {
 
     // IMPORTANT: Register offer listener BEFORE sending connection-ready
     // to avoid race condition where offer arrives before listener is ready
+    logger.info(
+      { channelName, channelTopic: signalingChannel.topic },
+      'Registering offer listener'
+    );
+
     (signalingChannel as any).on(
       'broadcast',
       { event: 'offer' },
       (msg: { payload: { sdp: string } }) => {
-        logger.info({ msg }, 'Received offer!');
+        logger.info({ msg, channelTopic: signalingChannel.topic }, 'Received offer!');
         this.handleOffer(msg.payload, signalingChannel).catch((err: any) => {
           logger.error({ err }, 'Failed to handle offer');
         });
       }
     );
+
+    // Also listen to ALL broadcast events for debugging
+    (signalingChannel as any).on('broadcast', { event: '*' }, (msg: any) => {
+      logger.info(
+        { event: 'broadcast-wildcard', msg, channelTopic: signalingChannel.topic },
+        'Received ANY broadcast message'
+      );
+    });
 
     // Send connection-ready on the existing presence channel
     await this.presenceChannel.send({

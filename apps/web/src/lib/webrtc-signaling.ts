@@ -167,19 +167,30 @@ export class WebRTCSignaling {
         .createOffer(
           // onSignal: Send signaling messages
           (msg) => {
+            const event =
+              msg.type === 'signal-offer'
+                ? 'offer'
+                : msg.type === 'signal-candidate'
+                  ? 'candidate'
+                  : 'unknown';
+
+            console.log(
+              `[WebRTCSignaling] Sending ${event} via channel:`,
+              signalingChannel.topic,
+              msg.payload
+            );
+
             signalingChannel
               .send({
                 type: 'broadcast',
-                event:
-                  msg.type === 'signal-offer'
-                    ? 'offer'
-                    : msg.type === 'signal-candidate'
-                      ? 'candidate'
-                      : 'unknown',
+                event,
                 payload: msg.payload,
               })
+              .then((result) => {
+                console.log(`[WebRTCSignaling] ${event} sent successfully:`, result);
+              })
               .catch((err) => {
-                console.error('[WebRTCSignaling] Failed to send signal:', err);
+                console.error(`[WebRTCSignaling] Failed to send ${event}:`, err);
               });
           },
           // onStateChange: WebRTC state changes
