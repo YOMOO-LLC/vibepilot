@@ -206,4 +206,49 @@ describe('PtyManager', () => {
     manager = new PtyManager();
     expect(() => manager.detachOutput('no-such')).not.toThrow();
   });
+
+  it('filters Claude Code environment variables from spawned sessions', async () => {
+    // Set up Claude Code environment variables
+    const originalClaudeCode = process.env.CLAUDECODE;
+    const originalEntrypoint = process.env.CLAUDE_CODE_ENTRYPOINT;
+
+    process.env.CLAUDECODE = '1';
+    process.env.CLAUDE_CODE_ENTRYPOINT = 'cli';
+
+    try {
+      const pty = await import('node-pty');
+      const spawnSpy = vi.mocked(pty.spawn);
+
+      manager = new PtyManager();
+      manager.create('sess-1');
+
+      // Verify spawn was called
+      expect(spawnSpy).toHaveBeenCalled();
+
+      // Get the env argument passed to spawn
+      const spawnCall = spawnSpy.mock.calls[spawnSpy.mock.calls.length - 1];
+      const spawnOptions = spawnCall[2]; // Third argument is options
+      const spawnEnv = spawnOptions?.env as Record<string, string>;
+
+      // Verify Claude Code variables are filtered out
+      expect(spawnEnv).toBeDefined();
+      expect(spawnEnv.CLAUDECODE).toBeUndefined();
+      expect(spawnEnv.CLAUDE_CODE_ENTRYPOINT).toBeUndefined();
+
+      // Verify other env vars are still present
+      expect(spawnEnv.PATH).toBeDefined();
+    } finally {
+      // Restore original env
+      if (originalClaudeCode !== undefined) {
+        process.env.CLAUDECODE = originalClaudeCode;
+      } else {
+        delete process.env.CLAUDECODE;
+      }
+      if (originalEntrypoint !== undefined) {
+        process.env.CLAUDE_CODE_ENTRYPOINT = originalEntrypoint;
+      } else {
+        delete process.env.CLAUDE_CODE_ENTRYPOINT;
+      }
+    }
+  });
 });

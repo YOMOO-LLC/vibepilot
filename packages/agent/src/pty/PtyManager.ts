@@ -45,12 +45,18 @@ export class PtyManager {
       throw new Error('Shell not allowed');
     }
 
+    // Filter out Claude Code environment variables to prevent nested session detection
+    // This allows users to run Claude Code inside VibePilot terminals
+    const cleanEnv = { ...process.env };
+    delete cleanEnv.CLAUDECODE;
+    delete cleanEnv.CLAUDE_CODE_ENTRYPOINT;
+
     const proc = pty.spawn(shell, [], {
       name: 'xterm-256color',
       cols,
       rows,
       cwd,
-      env: process.env as Record<string, string>,
+      env: cleanEnv as Record<string, string>,
     });
 
     const outputDelegate = new OutputDelegate();
