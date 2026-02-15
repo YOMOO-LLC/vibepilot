@@ -397,6 +397,52 @@ describe('TransportManager', () => {
     expect(mockWebRTCClient.send).not.toHaveBeenCalled();
   });
 
+  it('routes tunnel:request to file-transfer channel via WebRTC', () => {
+    manager.connect('ws://localhost:9800');
+
+    const wsCallback = mockWsClient.connect.mock.calls[0][1];
+    wsCallback('connected');
+
+    mockWebRTCClient.state = 'connected';
+    const rtcStateCallback = mockWebRTCClient.createOffer.mock.calls[0][1];
+    rtcStateCallback('connected');
+
+    manager.send(MessageType.TUNNEL_REQUEST, {
+      tunnelId: 't1',
+      requestId: 'req-1',
+      method: 'GET',
+      path: '/api/data',
+      headers: {},
+    });
+
+    expect(mockWebRTCClient.send).toHaveBeenCalledWith(
+      'file-transfer',
+      MessageType.TUNNEL_REQUEST,
+      { tunnelId: 't1', requestId: 'req-1', method: 'GET', path: '/api/data', headers: {} }
+    );
+    expect(mockWsClient.send).not.toHaveBeenCalled();
+  });
+
+  it('falls back to WebSocket for tunnel messages when WebRTC disconnected', () => {
+    manager.connect('ws://localhost:9800');
+
+    const wsCallback = mockWsClient.connect.mock.calls[0][1];
+    wsCallback('connected');
+    mockWsClient.state = 'connected';
+    mockWebRTCClient.state = 'disconnected';
+
+    manager.send(MessageType.TUNNEL_OPEN, {
+      tunnelId: 't1',
+      targetPort: 3000,
+    });
+
+    expect(mockWsClient.send).toHaveBeenCalledWith(MessageType.TUNNEL_OPEN, {
+      tunnelId: 't1',
+      targetPort: 3000,
+    });
+    expect(mockWebRTCClient.send).not.toHaveBeenCalled();
+  });
+
   it('sends browser:start via WebSocket (not a stream type)', () => {
     manager.connect('ws://localhost:9800');
 

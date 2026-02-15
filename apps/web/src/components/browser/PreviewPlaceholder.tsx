@@ -1,9 +1,10 @@
 'use client';
 
 import { useBrowserStore } from '@/stores/browserStore';
+import { TunnelButton } from './TunnelButton';
 
 export function PreviewPlaceholder() {
-  const { state, error, start } = useBrowserStore();
+  const { state, error, start, detectedPorts } = useBrowserStore();
 
   if (state === 'starting') {
     return (
@@ -36,6 +37,16 @@ export function PreviewPlaceholder() {
       >
         Open Browser
       </button>
+      {detectedPorts.length > 0 && (
+        <div className="flex flex-col gap-2 mt-4" data-testid="detected-ports">
+          <p className="text-xs text-zinc-500">Detected dev servers:</p>
+          <div className="flex flex-wrap gap-2">
+            {detectedPorts.map((url) => (
+              <TunnelButton key={url} url={url} />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

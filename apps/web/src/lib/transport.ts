@@ -28,6 +28,14 @@ const BROWSER_STREAM_TYPES: Set<string> = new Set([
   MessageType.BROWSER_RESIZE,
 ]);
 
+// Message types that should prefer WebRTC "file-transfer" channel (reliable)
+const TUNNEL_TYPES: Set<string> = new Set([
+  MessageType.TUNNEL_OPEN,
+  MessageType.TUNNEL_REQUEST,
+  MessageType.TUNNEL_RESPONSE,
+  MessageType.TUNNEL_CLOSE,
+]);
+
 export class TransportManager {
   private rtcClient: VPWebRTCClient;
   private _activeTransport: TransportType = 'websocket';
@@ -111,6 +119,15 @@ export class TransportManager {
     if (BROWSER_STREAM_TYPES.has(type) && this.rtcClient.state === 'connected') {
       try {
         this.rtcClient.send('browser-stream', type, payload);
+        return;
+      } catch {
+        // DataChannel not open, fall through to WS
+      }
+    }
+
+    if (TUNNEL_TYPES.has(type) && this.rtcClient.state === 'connected') {
+      try {
+        this.rtcClient.send('file-transfer', type, payload);
         return;
       } catch {
         // DataChannel not open, fall through to WS
