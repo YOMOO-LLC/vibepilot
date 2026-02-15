@@ -1,40 +1,67 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useAgentStore, type AgentInfo } from '@/stores/agentStore';
 
 const AUTH_MODE = process.env.NEXT_PUBLIC_AUTH_MODE || 'none';
 
-function AgentCard({ agent, onSelect }: { agent: AgentInfo; onSelect: (id: string) => void }) {
+const REFRESH_INTERVAL_MS = 15000; // Auto-refresh agent list every 15s in Supabase mode
+
+function AgentCard({
+  agent,
+  onSelect,
+  connecting,
+}: {
+  agent: AgentInfo;
+  onSelect: (id: string) => void;
+  connecting: boolean;
+}) {
   const { removeAgent } = useAgentStore();
   const isSupabase = AUTH_MODE === 'supabase';
 
   return (
     <div className="group relative">
       <button
-        onClick={() => onSelect(agent.id)}
-        className="w-full p-6 rounded-lg border-2 border-zinc-700 bg-zinc-900 hover:border-blue-500 hover:bg-blue-500/10 transition-all text-left"
+        onClick={() => !connecting && onSelect(agent.id)}
+        disabled={connecting}
+        className={`w-full p-6 rounded-lg border-2 transition-all text-left ${
+          connecting
+            ? 'border-blue-500 bg-blue-500/10 cursor-wait'
+            : 'border-zinc-700 bg-zinc-900 hover:border-blue-500 hover:bg-blue-500/10'
+        }`}
       >
-        <div className="mb-3 w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center">
-          <svg
-            className="w-5 h-5 text-zinc-400"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M5 12h14M12 5l7 7-7 7"
-            />
-          </svg>
+        <div className="flex items-start justify-between mb-3">
+          <div className="w-10 h-10 rounded-lg bg-zinc-800 flex items-center justify-center">
+            {connecting ? (
+              <div className="w-5 h-5 border-2 border-zinc-600 border-t-blue-400 rounded-full animate-spin" />
+            ) : (
+              <svg
+                className="w-5 h-5 text-zinc-400"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 12h14M12 5l7 7-7 7"
+                />
+              </svg>
+            )}
+          </div>
+          {/* Online indicator */}
+          <div className="flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-green-500" />
+            <span className="text-xs text-zinc-500">Online</span>
+          </div>
         </div>
         <h3 className="text-lg font-semibold text-zinc-100 mb-1 truncate">{agent.name}</h3>
         <p className="text-sm text-zinc-500 truncate">{agent.url}</p>
+        {connecting && <p className="text-xs text-blue-400 mt-2">Connecting...</p>}
       </button>
       {/* Only show remove button for manually-added agents (non-Supabase) */}
-      {!isSupabase && (
+      {!isSupabase && !connecting && (
         <button
           onClick={(e) => {
             e.stopPropagation();
@@ -130,16 +157,44 @@ function AddAgentForm({ onAdded }: { onAdded: () => void }) {
 export function AgentSelectorScreen() {
   const { agents, selectAgent, loadAgents, loading } = useAgentStore();
   const [showAddForm, setShowAddForm] = useState(false);
+  const [connectingId, setConnectingId] = useState<string | null>(null);
   const isSupabase = AUTH_MODE === 'supabase';
+  const refreshRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Auto-refresh agent list in Supabase mode
+  useEffect(() => {
+    if (!isSupabase) return;
+
+    refreshRef.current = setInterval(() => {
+      loadAgents();
+    }, REFRESH_INTERVAL_MS);
+
+    return () => {
+      if (refreshRef.current) {
+        clearInterval(refreshRef.current);
+      }
+    };
+  }, [isSupabase, loadAgents]);
 
   const handleRefresh = useCallback(() => {
     loadAgents();
   }, [loadAgents]);
 
-  if (loading) {
+  const handleSelect = useCallback(
+    (agentId: string) => {
+      setConnectingId(agentId);
+      selectAgent(agentId);
+    },
+    [selectAgent]
+  );
+
+  if (loading && agents.length === 0) {
     return (
       <div className="fixed inset-0 z-50 bg-zinc-950 flex items-center justify-center">
-        <p className="text-zinc-400">Loading agents...</p>
+        <div className="text-center space-y-3">
+          <div className="w-8 h-8 border-2 border-zinc-600 border-t-blue-500 rounded-full animate-spin mx-auto" />
+          <p className="text-zinc-400">Loading agents...</p>
+        </div>
       </div>
     );
   }
@@ -149,14 +204,20 @@ export function AgentSelectorScreen() {
       <div className="w-full max-w-3xl px-8">
         <div className="flex items-center justify-between mb-2">
           <h1 className="text-3xl font-bold text-zinc-100">Select an Agent</h1>
-          {isSupabase && (
-            <button
-              onClick={handleRefresh}
-              className="px-3 py-1.5 text-sm text-zinc-400 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-500 rounded-lg transition-colors"
-            >
-              Refresh
-            </button>
-          )}
+          <div className="flex items-center gap-3">
+            {loading && (
+              <div className="w-4 h-4 border-2 border-zinc-600 border-t-blue-500 rounded-full animate-spin" />
+            )}
+            {isSupabase && (
+              <button
+                onClick={handleRefresh}
+                disabled={loading}
+                className="px-3 py-1.5 text-sm text-zinc-400 hover:text-zinc-200 border border-zinc-700 hover:border-zinc-500 rounded-lg transition-colors disabled:opacity-50"
+              >
+                Refresh
+              </button>
+            )}
+          </div>
         </div>
         <p className="text-zinc-400 mb-8">
           {isSupabase
@@ -167,7 +228,12 @@ export function AgentSelectorScreen() {
         {agents.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
             {agents.map((agent) => (
-              <AgentCard key={agent.id} agent={agent} onSelect={selectAgent} />
+              <AgentCard
+                key={agent.id}
+                agent={agent}
+                onSelect={handleSelect}
+                connecting={connectingId === agent.id}
+              />
             ))}
           </div>
         ) : (

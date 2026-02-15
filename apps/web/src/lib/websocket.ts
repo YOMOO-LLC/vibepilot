@@ -8,7 +8,9 @@ import {
 export type ConnectionState = 'disconnected' | 'connecting' | 'connected';
 export type MessageHandler = (msg: VPMessage) => void;
 
-const RECONNECT_DELAY_MS = 3000;
+const RECONNECT_BASE_MS = 3000;
+const RECONNECT_MAX_MS = 30000;
+const MAX_RECONNECT_ATTEMPTS = 10;
 
 export class VPWebSocketClient {
   private ws: WebSocket | null = null;
@@ -19,6 +21,7 @@ export class VPWebSocketClient {
   private reconnectUrl: string | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private shouldReconnect = false;
+  private reconnectAttempts = 0;
 
   get state(): ConnectionState {
     return this._state;
@@ -48,6 +51,7 @@ export class VPWebSocketClient {
     this.onStateChange = onStateChange;
     this.reconnectUrl = url;
     this.shouldReconnect = true;
+    this.reconnectAttempts = 0;
     this.setState('connecting');
 
     this.doConnect(url);
@@ -55,6 +59,7 @@ export class VPWebSocketClient {
 
   disconnect(): void {
     this.shouldReconnect = false;
+    this.reconnectAttempts = 0;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -99,6 +104,7 @@ export class VPWebSocketClient {
 
     ws.onopen = () => {
       if (this.ws !== ws) return; // stale instance
+      this.reconnectAttempts = 0;
       this.setState('connected');
     };
 
@@ -128,13 +134,24 @@ export class VPWebSocketClient {
     if (!this.shouldReconnect || !this.reconnectUrl) return;
     if (this.reconnectTimer) return;
 
+    if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
+      console.warn(`[WS] Max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached`);
+      return;
+    }
+
+    const delay = Math.min(
+      RECONNECT_BASE_MS * Math.pow(2, this.reconnectAttempts),
+      RECONNECT_MAX_MS
+    );
+    this.reconnectAttempts++;
+
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;
       if (this.shouldReconnect && this.reconnectUrl) {
         this.setState('connecting');
         this.doConnect(this.reconnectUrl);
       }
-    }, RECONNECT_DELAY_MS);
+    }, delay);
   }
 
   private dispatch(msg: VPMessage): void {

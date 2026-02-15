@@ -7,7 +7,7 @@ const stateColor = (state: string) =>
   state === 'connected'
     ? 'bg-green-500'
     : state === 'connecting'
-      ? 'bg-yellow-500'
+      ? 'bg-yellow-500 animate-pulse'
       : state === 'failed'
         ? 'bg-red-500'
         : 'bg-zinc-500';

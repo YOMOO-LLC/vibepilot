@@ -1,15 +1,9 @@
 'use client';
 
-import { useEffect } from 'react';
 import { useConnectionStore } from '@/stores/connectionStore';
 
 export function ConnectionStatus() {
-  const { state, connect, disconnect } = useConnectionStore();
-
-  useEffect(() => {
-    connect();
-    return () => disconnect();
-  }, [connect, disconnect]);
+  const state = useConnectionStore((s) => s.state);
 
   const statusColor = {
     disconnected: 'bg-red-500',
