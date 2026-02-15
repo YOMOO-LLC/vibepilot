@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useBrowserStore } from '@/stores/browserStore';
+import { useNotificationStore } from '@/stores/notificationStore';
 
 // Mock transport (same pattern as editorStore.test.ts)
 vi.mock('@/lib/transport', () => {
@@ -49,6 +50,7 @@ describe('browserStore', () => {
       detectedPorts: [],
     });
 
+    useNotificationStore.setState({ notifications: [] });
     vi.clearAllMocks();
   });
 
@@ -95,6 +97,21 @@ describe('browserStore', () => {
     const state = useBrowserStore.getState();
     expect(state.state).toBe('error');
     expect(state.error).toBe('Chrome not found');
+  });
+
+  it('browser:error adds error notification', () => {
+    useBrowserStore.getState().start();
+
+    mockTransport._trigger('browser:error', {
+      error: 'Chrome not found',
+      code: 'CHROME_NOT_FOUND',
+    });
+
+    const notifications = useNotificationStore.getState().notifications;
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0].type).toBe('error');
+    expect(notifications[0].message).toContain('Browser preview error');
+    expect(notifications[0].detail).toBe('Chrome not found');
   });
 
   it('handles browser:frame message', () => {

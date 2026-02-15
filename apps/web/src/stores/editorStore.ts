@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { MessageType, type VPMessage } from '@vibepilot/protocol';
 import { transportManager } from '@/lib/transport';
+import { useNotificationStore } from '@/stores/notificationStore';
 
 export interface EditorTab {
   id: string;
@@ -172,6 +173,8 @@ export const useEditorStore = create<EditorStore>((set, get) => {
 
     handleFileError: (msg: VPMessage) => {
       const payload = msg.payload as { filePath: string; error: string };
+      const fileName = payload.filePath.split('/').pop() || payload.filePath;
+      useNotificationStore.getState().add('error', `Failed to read ${fileName}`, payload.error);
 
       set((state) => ({
         tabs: state.tabs.map((t) =>

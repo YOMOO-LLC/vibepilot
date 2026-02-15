@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { useEditorStore } from '@/stores/editorStore';
+import { useNotificationStore } from '@/stores/notificationStore';
 
 // Mock transport manager
 vi.mock('@/lib/transport', () => {
@@ -43,6 +44,7 @@ describe('editorStore', () => {
       counter: 0,
     });
 
+    useNotificationStore.setState({ notifications: [] });
     vi.clearAllMocks();
   });
 
@@ -257,6 +259,44 @@ describe('editorStore', () => {
     vi.clearAllMocks();
     useEditorStore.getState().saveFile(id);
     expect(mockTransport.send).not.toHaveBeenCalled();
+  });
+
+  it('handleFileError adds error notification', () => {
+    useEditorStore.getState().openFile('/project/missing-file.ts');
+
+    useEditorStore.getState().handleFileError({
+      type: 'file:error',
+      id: 'msg-err',
+      timestamp: Date.now(),
+      payload: {
+        filePath: '/project/missing-file.ts',
+        error: 'ENOENT: no such file or directory',
+      },
+    });
+
+    const notifications = useNotificationStore.getState().notifications;
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0].type).toBe('error');
+    expect(notifications[0].message).toContain('missing-file.ts');
+    expect(notifications[0].detail).toBe('ENOENT: no such file or directory');
+  });
+
+  it('handleFileError notification uses filename only, not full path', () => {
+    useEditorStore.getState().openFile('/very/deep/nested/path/to/component.tsx');
+
+    useEditorStore.getState().handleFileError({
+      type: 'file:error',
+      id: 'msg-err2',
+      timestamp: Date.now(),
+      payload: {
+        filePath: '/very/deep/nested/path/to/component.tsx',
+        error: 'Permission denied',
+      },
+    });
+
+    const notifications = useNotificationStore.getState().notifications;
+    expect(notifications[0].message).toContain('component.tsx');
+    expect(notifications[0].message).not.toContain('/very/deep');
   });
 
   it('handleFileWritten resets dirty state', () => {

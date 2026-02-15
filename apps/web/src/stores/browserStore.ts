@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { transportManager } from '@/lib/transport';
 import { detectPorts } from '@/lib/portDetector';
 import type { BrowserInputPayload } from '@vibepilot/protocol';
+import { useNotificationStore } from '@/stores/notificationStore';
 
 type BrowserState = 'idle' | 'starting' | 'running' | 'error';
 
@@ -36,6 +37,7 @@ export const useBrowserStore = create<BrowserStore>((set, get) => {
   });
 
   transportManager.on('browser:error', (msg: any) => {
+    useNotificationStore.getState().add('error', 'Browser preview error', msg.payload.error);
     set({
       state: 'error',
       error: msg.payload.error,

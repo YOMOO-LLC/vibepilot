@@ -30,6 +30,7 @@ vi.mock('@/lib/webrtc', () => ({
 }));
 
 import { useConnectionStore } from '@/stores/connectionStore';
+import { useNotificationStore } from '@/stores/notificationStore';
 
 describe('connectionStore', () => {
   beforeEach(() => {
@@ -41,6 +42,7 @@ describe('connectionStore', () => {
       activeTransport: 'websocket',
       url: 'ws://localhost:9800',
     });
+    useNotificationStore.setState({ notifications: [] });
   });
 
   it('has initial state disconnected', () => {
@@ -116,5 +118,65 @@ describe('connectionStore', () => {
 
     expect(useConnectionStore.getState().webrtcState).toBe('disconnected');
     expect(useConnectionStore.getState().activeTransport).toBe('websocket');
+  });
+
+  // ── Notification integration tests ──────────────────────────────
+  describe('notification integration', () => {
+    it('adds success notification on connection established', () => {
+      useConnectionStore.getState().connect();
+
+      // Extract the state callback
+      const stateCallback = mockTransportManager.connect.mock.calls[0][1];
+
+      // Simulate connection established
+      stateCallback('connected');
+
+      const notifications = useNotificationStore.getState().notifications;
+      expect(notifications).toHaveLength(1);
+      expect(notifications[0].type).toBe('success');
+      expect(notifications[0].message).toContain('Connected');
+    });
+
+    it('adds warning notification when connection drops', () => {
+      useConnectionStore.getState().connect();
+
+      const stateCallback = mockTransportManager.connect.mock.calls[0][1];
+
+      // First connect, then disconnect
+      stateCallback('connected');
+      useNotificationStore.setState({ notifications: [] }); // Clear the success notification
+      stateCallback('disconnected');
+
+      const notifications = useNotificationStore.getState().notifications;
+      expect(notifications).toHaveLength(1);
+      expect(notifications[0].type).toBe('warning');
+      expect(notifications[0].message).toContain('Disconnected');
+    });
+
+    it('does NOT add notification for disconnected -> disconnected transition', () => {
+      useConnectionStore.getState().connect();
+
+      const stateCallback = mockTransportManager.connect.mock.calls[0][1];
+
+      // Stay disconnected
+      stateCallback('disconnected');
+
+      const notifications = useNotificationStore.getState().notifications;
+      expect(notifications).toHaveLength(0);
+    });
+
+    it('does NOT add duplicate connected notification', () => {
+      useConnectionStore.getState().connect();
+
+      const stateCallback = mockTransportManager.connect.mock.calls[0][1];
+
+      // Connect twice
+      stateCallback('connected');
+      stateCallback('connected');
+
+      const notifications = useNotificationStore.getState().notifications;
+      // Should only have one success notification (second 'connected' is same state)
+      expect(notifications).toHaveLength(1);
+    });
   });
 });

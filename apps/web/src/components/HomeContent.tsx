@@ -26,6 +26,7 @@ import { useProjectStore } from '@/stores/projectStore';
 import { useFileTreeStore } from '@/stores/fileTreeStore';
 import { useAuthStore } from '@/stores/authStore';
 import { useAgentStore } from '@/stores/agentStore';
+import { initTunnelBridge } from '@/lib/tunnelBridge';
 import { ProjectSelectorModal } from '@/components/project/ProjectSelectorModal';
 
 const AUTH_MODE = process.env.NEXT_PUBLIC_AUTH_MODE || 'none';
@@ -65,6 +66,11 @@ export default function HomeContent() {
   // Determine if auth is required
   const needsAuth = AUTH_MODE !== 'none';
   const isAuthed = !needsAuth || isAuthenticated;
+
+  // Initialize tunnel bridge for Service Worker communication
+  useEffect(() => {
+    initTunnelBridge();
+  }, []);
 
   // Step 1: Restore session on mount + init Supabase listener
   useEffect(() => {
@@ -188,7 +194,7 @@ export default function HomeContent() {
         <header className="flex items-center justify-between px-4 py-2 border-b border-zinc-800">
           <h1 className="text-lg font-semibold">VibePilot</h1>
           <div className="flex items-center gap-4">
-            <DevicePicker />
+            {needsAuth && <DevicePicker />}
             <ProjectSwitcher />
             <ConnectionStatus />
           </div>
@@ -205,6 +211,31 @@ export default function HomeContent() {
           <div className="flex flex-col h-full">
             <TabBar />
             <main className="flex-1 overflow-hidden relative">
+              {/* Connection overlay: show when not connected and no project */}
+              {connectionState !== 'connected' && !currentProject && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center bg-zinc-950/80">
+                  <div className="text-center space-y-3">
+                    {connectionState === 'connecting' ? (
+                      <>
+                        <div className="w-8 h-8 border-2 border-zinc-600 border-t-blue-500 rounded-full animate-spin mx-auto" />
+                        <p className="text-sm text-zinc-400">Connecting to agent...</p>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-8 h-8 border-2 border-zinc-700 rounded-full mx-auto flex items-center justify-center">
+                          <div className="w-2 h-2 bg-red-500 rounded-full" />
+                        </div>
+                        <p className="text-sm text-zinc-400">Not connected</p>
+                        <p className="text-xs text-zinc-500">
+                          {needsAuth
+                            ? 'Select an agent to connect'
+                            : 'Make sure the agent is running on ws://localhost:9800'}
+                        </p>
+                      </>
+                    )}
+                  </div>
+                </div>
+              )}
               {/* Terminal: use display:none to preserve xterm state */}
               <div style={{ display: isTerminalActive ? 'block' : 'none', height: '100%' }}>
                 <TerminalSplitLayout />

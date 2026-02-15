@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
 import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
 import type { VPWebRTCClient } from '@/lib/webrtc';
+import { useNotificationStore } from '@/stores/notificationStore';
 
 const AUTH_MODE = process.env.NEXT_PUBLIC_AUTH_MODE || 'none';
 
@@ -65,6 +66,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
 
         if (error) {
           console.error('Failed to load agents from Supabase:', error);
+          useNotificationStore.getState().add('error', 'Failed to load agents', error.message);
           set({ loading: false, showSelector: true });
           return;
         }
@@ -92,8 +94,9 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         } else {
           set({ showSelector: true });
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('Failed to load agents:', err);
+        useNotificationStore.getState().add('error', 'Failed to load agents', err?.message);
         set({ loading: false, showSelector: true });
       }
     } else {
@@ -149,6 +152,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         } = await supabase.auth.getSession();
         if (!session) {
           console.error('[agentStore] No active session');
+          useNotificationStore.getState().add('error', 'Session expired', 'Please log in again');
           return;
         }
 
@@ -174,10 +178,10 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
 
         const client = await signaling.connect(agentId, (state, meta) => {
           console.log('[agentStore] Connection state:', state, meta);
-          // TODO: Update UI state (show connection progress)
         });
 
         console.log('[agentStore] WebRTC connection established');
+        useNotificationStore.getState().add('success', 'Connected to agent via WebRTC');
 
         // Integrate WebRTC client with transportManager
         const { transportManager } = await import('@/lib/transport');
@@ -190,11 +194,9 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
             console.log('[agentStore] Active transport:', transport);
           }
         );
-
-        console.log('[agentStore] WebRTC client integrated with transportManager');
       } catch (err: any) {
         console.error('[agentStore] WebRTC connection failed:', err.message);
-        // TODO: Show error toast
+        useNotificationStore.getState().add('error', 'WebRTC connection failed', err.message);
       }
     }
   },
@@ -343,6 +345,7 @@ export const agentStore = create<CloudAgentStore>((set, get) => ({
 
     if (!supabase) {
       console.error('[agentStore] No Supabase client available');
+      useNotificationStore.getState().add('error', 'Supabase client not available');
       return;
     }
 
@@ -352,6 +355,7 @@ export const agentStore = create<CloudAgentStore>((set, get) => ({
     } = await supabase.auth.getSession();
     if (!session) {
       console.error('[agentStore] No active session');
+      useNotificationStore.getState().add('error', 'Session expired', 'Please log in again');
       return;
     }
 
@@ -359,13 +363,16 @@ export const agentStore = create<CloudAgentStore>((set, get) => ({
     const agent = agents.find((a) => a.id === agentId);
     if (!agent) {
       console.error('[agentStore] Agent not found:', agentId);
+      useNotificationStore.getState().add('error', 'Agent not found');
       return;
     }
 
     // 检查 agent 是否在线
     if (!agent.online) {
       console.warn('[agentStore] Agent is offline:', agentId);
-      // TODO: 显示 toast 通知用户
+      useNotificationStore
+        .getState()
+        .add('warning', 'Agent is offline', 'Please start the agent first');
       return;
     }
 
@@ -392,17 +399,17 @@ export const agentStore = create<CloudAgentStore>((set, get) => ({
     try {
       const client = await signaling.connect(agentId, (state, meta) => {
         console.log('[agentStore] Connection state:', state, meta);
-        // TODO: 更新 UI 状态（显示连接进度）
       });
 
       console.log('[agentStore] WebRTC connection established');
+      useNotificationStore.getState().add('success', `Connected to ${agent.name}`);
 
       // Store client and agent ID
       set({ activeClient: client, selectedAgentId: agentId });
     } catch (err: any) {
       console.error('[agentStore] WebRTC connection failed:', err.message);
+      useNotificationStore.getState().add('error', 'Connection failed', err.message);
       set({ activeClient: null, selectedAgentId: null });
-      // TODO: 显示错误 toast
     }
   },
 }));
