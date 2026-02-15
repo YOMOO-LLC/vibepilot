@@ -5,7 +5,7 @@ import { VPWebSocketServer } from '../src/transport/WebSocketServer.js';
 import { DEFAULT_PORT } from '@vibepilot/protocol';
 import { logger } from '../src/utils/logger.js';
 import { ProjectManager } from '../src/config/ProjectManager.js';
-import { ConfigManager } from '../src/config/ConfigManager.js';
+import { ConfigManager, type VibePilotConfig } from '../src/config/ConfigManager.js';
 import { TokenAuthProvider } from '../src/auth/TokenAuthProvider.js';
 import { SupabaseAuthProvider } from '../src/auth/SupabaseAuthProvider.js';
 import { CredentialManager } from '../src/auth/CredentialManager.js';
@@ -108,14 +108,26 @@ program
         case 'cloud':
         case 'self-hosted': {
           const credManager = new CredentialManager();
-          const creds = await credManager.load();
+          let creds = await credManager.load();
+          let freshLogin = false;
+
+          // Auto-login: if no credentials stored, trigger device auth automatically
+          if (!creds) {
+            creds = await autoLogin(config, credManager);
+            freshLogin = true;
+          }
+
           if (creds) {
             try {
-              const refreshed = await credManager.refreshIfNeeded(creds);
-              if (refreshed !== creds) {
-                await credManager.save(refreshed);
+              // Skip refresh for fresh logins — token was just issued
+              if (!freshLogin) {
+                const refreshed = await credManager.refreshIfNeeded(creds);
+                if (refreshed !== creds) {
+                  await credManager.save(refreshed);
+                  creds = refreshed;
+                }
               }
-              authProvider = new SupabaseAuthProvider(refreshed.supabaseUrl);
+              authProvider = new SupabaseAuthProvider(creds.supabaseUrl);
               logger.info('Supabase authentication enabled (from stored credentials)');
             } catch (err: any) {
               logger.error(
@@ -669,6 +681,88 @@ program
     const configManager = new ConfigManager();
     await configProjects(configManager);
   });
+
+// ── Auto-login helper ────────────────────────────────────────────
+
+/**
+ * Automatically trigger device auth when in cloud/self-hosted mode
+ * but no credentials are stored. Returns Credentials on success, null on failure.
+ */
+async function autoLogin(
+  config: VibePilotConfig,
+  credManager: InstanceType<typeof CredentialManager>
+): Promise<import('../src/auth/CredentialManager.js').Credentials | null> {
+  let webUrl: string;
+  let supabaseUrl: string | undefined;
+  let anonKey: string | undefined;
+
+  if (config.auth.mode === 'cloud') {
+    webUrl = config.cloud?.webUrl || process.env.VP_CLOUD_URL || 'https://vibepilot.cloud';
+    // Fetch cloud config
+    try {
+      const resp = await fetch(new URL('/api/config', webUrl).toString());
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = (await resp.json()) as { supabaseUrl: string; anonKey: string };
+      supabaseUrl = data.supabaseUrl;
+      anonKey = data.anonKey;
+    } catch (err: any) {
+      logger.warn({ err: err.message }, 'Auto-login: failed to fetch cloud config, skipping');
+      return null;
+    }
+  } else if (config.auth.mode === 'self-hosted' && config.selfHosted) {
+    webUrl = config.selfHosted.webUrl;
+    supabaseUrl = config.selfHosted.supabaseUrl;
+    anonKey = config.selfHosted.anonKey;
+  } else {
+    return null;
+  }
+
+  if (!supabaseUrl || !anonKey) {
+    logger.warn('Auto-login: missing Supabase configuration, skipping');
+    return null;
+  }
+
+  // Start device auth flow
+  const deviceServer = new DeviceAuthServer();
+  try {
+    const { authUrl } = await deviceServer.start(webUrl!);
+    logger.info('No credentials found. Starting automatic login...');
+    console.log(`\nOpen this URL in your browser to authenticate:\n  ${authUrl}\n`);
+
+    // Try to open browser automatically
+    try {
+      const open = (await import('open')).default;
+      await open(authUrl);
+      console.log('Browser opened. Waiting for authentication...\n');
+    } catch {
+      console.log('Waiting for authentication...\n');
+    }
+
+    const result = await deviceServer.waitForCallback();
+    const userId = CredentialManager.extractUserId(result.accessToken);
+
+    const creds: import('../src/auth/CredentialManager.js').Credentials = {
+      version: '0.1.0',
+      supabaseUrl: supabaseUrl!,
+      anonKey: anonKey!,
+      accessToken: result.accessToken,
+      refreshToken: result.refreshToken,
+      expiresAt: result.expiresAt,
+      userId,
+      email: '',
+      createdAt: Date.now(),
+    };
+
+    await credManager.save(creds);
+    logger.info('Auto-login successful. Credentials saved.');
+    return creds;
+  } catch (err: any) {
+    logger.warn({ err: err.message }, 'Auto-login failed, starting server without authentication');
+    return null;
+  } finally {
+    await deviceServer.close();
+  }
+}
 
 export { program };
 

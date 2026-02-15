@@ -40,7 +40,7 @@ export class ConfigManager {
     return {
       version: '0.1.0',
       auth: {
-        mode: 'none',
+        mode: 'cloud',
       },
       server: {
         port: DEFAULT_PORT,

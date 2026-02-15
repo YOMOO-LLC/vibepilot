@@ -17,11 +17,11 @@ describe('ConfigManager', () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it('getDefault() returns valid config with auth mode "none"', () => {
+  it('getDefault() returns valid config with auth mode "cloud"', () => {
     const config = manager.getDefault();
 
     expect(config.version).toBe('0.1.0');
-    expect(config.auth.mode).toBe('none');
+    expect(config.auth.mode).toBe('cloud');
     expect(config.server.port).toBe(9800);
     expect(config.server.sessionTimeout).toBe(300);
     expect(config.server.agentName).toBe(os.hostname());
@@ -81,7 +81,7 @@ describe('ConfigManager', () => {
     const loaded = await manager.load();
 
     expect(loaded.version).toBe('0.1.0');
-    expect(loaded.auth.mode).toBe('none');
+    expect(loaded.auth.mode).toBe('cloud');
     expect(loaded.server.port).toBe(9800);
     expect(loaded.projects).toEqual([]);
   });
@@ -93,7 +93,7 @@ describe('ConfigManager', () => {
     const loaded = await manager.load();
 
     expect(loaded.version).toBe('0.1.0');
-    expect(loaded.auth.mode).toBe('none');
+    expect(loaded.auth.mode).toBe('cloud');
     expect(loaded.server.port).toBe(9800);
     expect(loaded.projects).toEqual([]);
   });
