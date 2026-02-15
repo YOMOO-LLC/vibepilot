@@ -463,18 +463,26 @@ export class VPWebSocketServer {
     const { sessionId, cols, rows, cwd, shell } = payload;
     const effectiveCwd = cwd || this.cwd;
 
-    const { pid } = this.ptyManager.create(sessionId, {
-      cols,
-      rows,
-      cwd: effectiveCwd,
-      shell,
-    });
+    let pid: number;
+    try {
+      const result = this.ptyManager.create(sessionId, {
+        cols,
+        rows,
+        cwd: effectiveCwd,
+        shell,
+      });
+      pid = result.pid;
 
-    state.sessionIds.add(sessionId);
-    this.sessionOwners.set(sessionId, { ws, state });
+      state.sessionIds.add(sessionId);
+      this.sessionOwners.set(sessionId, { ws, state });
 
-    // Start tracking cwd changes for this session
-    this.startCwdTracking(sessionId, effectiveCwd);
+      // Start tracking cwd changes for this session
+      this.startCwdTracking(sessionId, effectiveCwd);
+    } catch (error) {
+      console.error(`[WebSocketServer] Failed to create terminal: ${error}`);
+      // Terminal creation failed, but don't crash the server
+      return;
+    }
 
     // Forward PTY output to client via delegate
     this.ptyManager.onOutput(sessionId, (data) => {

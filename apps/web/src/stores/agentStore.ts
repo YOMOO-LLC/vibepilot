@@ -77,19 +77,15 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
 
         set({ agents, loading: false });
 
-        if (agents.length === 1) {
-          // Auto-select the only agent
-          set({ selectedAgent: agents[0], showSelector: false });
-          if (typeof window !== 'undefined') {
-            localStorage.setItem(LAST_AGENT_KEY, agents[0].id);
-          }
-        } else if (agents.length > 1) {
-          // Try to restore last selection
+        // In Supabase mode, always show selector to allow user to choose
+        // This ensures WebRTC signaling flow is triggered (vs auto-connect)
+        if (agents.length > 0) {
+          // Try to restore last selection, but still show selector
           const lastId =
             typeof window !== 'undefined' ? localStorage.getItem(LAST_AGENT_KEY) : null;
           const last = lastId ? agents.find((a) => a.id === lastId) : null;
           if (last) {
-            set({ selectedAgent: last });
+            set({ selectedAgent: last, showSelector: true });
           } else {
             set({ showSelector: true });
           }
@@ -134,7 +130,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
     }
   },
 
-  selectAgent: (agentId: string) => {
+  selectAgent: async (agentId: string) => {
     const agent = get().agents.find((a) => a.id === agentId);
     if (!agent) return;
 
@@ -142,6 +138,64 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
 
     if (typeof window !== 'undefined') {
       localStorage.setItem(LAST_AGENT_KEY, agentId);
+    }
+
+    // In Supabase mode, initiate WebRTC signaling
+    if (AUTH_MODE === 'supabase' && supabase) {
+      try {
+        // Get session
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        if (!session) {
+          console.error('[agentStore] No active session');
+          return;
+        }
+
+        console.log('[agentStore] Initiating WebRTC connection to agent:', agentId);
+
+        // Create authenticated Supabase client
+        const { createClient } = await import('@supabase/supabase-js');
+        const authenticatedSupabase = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          {
+            global: {
+              headers: {
+                Authorization: `Bearer ${session.access_token}`,
+              },
+            },
+          }
+        );
+
+        // Initialize WebRTC signaling
+        const { WebRTCSignaling } = await import('@/lib/webrtc-signaling');
+        const signaling = new WebRTCSignaling(authenticatedSupabase, session.user.id);
+
+        const client = await signaling.connect(agentId, (state, meta) => {
+          console.log('[agentStore] Connection state:', state, meta);
+          // TODO: Update UI state (show connection progress)
+        });
+
+        console.log('[agentStore] WebRTC connection established');
+
+        // Integrate WebRTC client with transportManager
+        const { transportManager } = await import('@/lib/transport');
+        transportManager.useWebRTCClient(
+          client,
+          (state) => {
+            console.log('[agentStore] Transport WebRTC state:', state);
+          },
+          (transport) => {
+            console.log('[agentStore] Active transport:', transport);
+          }
+        );
+
+        console.log('[agentStore] WebRTC client integrated with transportManager');
+      } catch (err: any) {
+        console.error('[agentStore] WebRTC connection failed:', err.message);
+        // TODO: Show error toast
+      }
     }
   },
 
@@ -317,9 +371,23 @@ export const agentStore = create<CloudAgentStore>((set, get) => ({
 
     console.log('[agentStore] Initiating WebRTC connection to agent:', agentId);
 
+    // 创建包含用户认证的 Supabase 客户端（与 Agent 端保持一致）
+    const { createClient } = await import('@supabase/supabase-js');
+    const authenticatedSupabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        },
+      }
+    );
+
     // 初始化 WebRTC 信令
     const { WebRTCSignaling } = await import('@/lib/webrtc-signaling');
-    const signaling = new WebRTCSignaling(supabase, session.user.id);
+    const signaling = new WebRTCSignaling(authenticatedSupabase, session.user.id);
 
     try {
       const client = await signaling.connect(agentId, (state, meta) => {

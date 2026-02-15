@@ -28,6 +28,7 @@ export class WebRTCSignaling {
   private signalingChannels = new Map<string, RealtimeChannel>();
   private cleanupTimers = new Set<NodeJS.Timeout>();
   private peers = new Map<string, WebRTCPeer>();
+  private presenceChannel: RealtimeChannel | null = null;
 
   constructor(
     private supabase: SupabaseClient,
@@ -39,11 +40,25 @@ export class WebRTCSignaling {
    * Start listening for connection requests on the given presence channel
    */
   async start(presenceChannel: RealtimeChannel): Promise<void> {
+    // Save reference to presence channel
+    this.presenceChannel = presenceChannel;
+
+    logger.info({ channelState: presenceChannel.state }, 'WebRTC signaling starting');
+
+    // Subscribe to the channel if not already subscribed
+    if (presenceChannel.state !== 'joined') {
+      logger.info('Presence channel not joined, subscribing...');
+      await presenceChannel.subscribe();
+    }
+
+    logger.info('Registering broadcast listener for connection-request');
     (presenceChannel as any).on(
       'broadcast',
       { event: 'connection-request' },
-      (payload: { agentId: string }) => {
-        this.handleConnectionRequest(payload).catch((err: any) => {
+      (msg: { payload: { agentId: string } }) => {
+        logger.info({ msg }, 'Received broadcast message!');
+        // Extract actual payload from nested structure
+        this.handleConnectionRequest(msg.payload).catch((err: any) => {
           logger.error({ err }, 'Failed to handle connection request');
         });
       }
@@ -88,29 +103,77 @@ export class WebRTCSignaling {
 
     logger.info({ agentId: this.agentId }, 'Received connection request');
 
-    // Create temporary signaling channel using spec pattern
+    if (!this.presenceChannel) {
+      logger.error('Presence channel not available');
+      return;
+    }
+
+    // Create temporary signaling channel with broadcast enabled
     const channelName = `agent:${this.agentId}:signaling`;
-    const signalingChannel = this.supabase.channel(channelName);
+
+    // Clean up existing channel if present to avoid conflicts
+    const existingChannel = this.signalingChannels.get(channelName);
+    if (existingChannel) {
+      logger.info({ channelName }, 'Cleaning up existing signaling channel');
+      try {
+        await existingChannel.unsubscribe();
+      } catch (err: any) {
+        logger.warn({ err: err.message }, 'Failed to unsubscribe existing channel');
+      }
+      this.signalingChannels.delete(channelName);
+    }
+
+    const signalingChannel = this.supabase.channel(channelName, {
+      config: {
+        broadcast: { self: false },
+      },
+    });
     this.signalingChannels.set(channelName, signalingChannel);
 
-    await signalingChannel.subscribe();
+    // Subscribe and wait for channel to be ready
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        logger.error(
+          { channelState: signalingChannel.state },
+          'Signaling channel subscription timeout'
+        );
+        reject(new Error('Signaling channel subscription timeout'));
+      }, 5000);
 
-    // Send connection-ready on presence channel
-    const presenceChannel = this.supabase.channel(`user:${this.userId}:agents`);
-    await presenceChannel.send({
+      logger.info('Subscribing to signaling channel...');
+      signalingChannel.subscribe((status, err) => {
+        logger.info({ status, err: err?.message }, 'Signaling channel subscription status');
+        if (status === 'SUBSCRIBED') {
+          clearTimeout(timeout);
+          resolve();
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          clearTimeout(timeout);
+          reject(new Error(`Signaling channel ${status}: ${err?.message}`));
+        }
+      });
+    });
+
+    // IMPORTANT: Register offer listener BEFORE sending connection-ready
+    // to avoid race condition where offer arrives before listener is ready
+    (signalingChannel as any).on(
+      'broadcast',
+      { event: 'offer' },
+      (msg: { payload: { sdp: string } }) => {
+        logger.info({ msg }, 'Received offer!');
+        this.handleOffer(msg.payload, signalingChannel).catch((err: any) => {
+          logger.error({ err }, 'Failed to handle offer');
+        });
+      }
+    );
+
+    // Send connection-ready on the existing presence channel
+    await this.presenceChannel.send({
       type: 'broadcast',
       event: 'connection-ready',
       payload: { agentId: this.agentId },
     });
 
     logger.info('Sent connection-ready, signaling channel created');
-
-    // Listen for offer
-    (signalingChannel as any).on('broadcast', { event: 'offer' }, (msg: { sdp: string }) => {
-      this.handleOffer(msg, signalingChannel).catch((err: any) => {
-        logger.error({ err }, 'Failed to handle offer');
-      });
-    });
 
     // Schedule cleanup after 2 minutes
     this.scheduleCleanup(signalingChannel, 120_000);
@@ -155,9 +218,10 @@ export class WebRTCSignaling {
     (channel as any).on(
       'broadcast',
       { event: 'candidate' },
-      (msg: { candidate: string; sdpMid?: string }) => {
+      (msg: { payload: { candidate: string; sdpMid?: string } }) => {
         try {
-          peer.addIceCandidate(msg.candidate, msg.sdpMid);
+          logger.info({ msg }, 'Received ICE candidate');
+          peer.addIceCandidate(msg.payload.candidate, msg.payload.sdpMid);
         } catch (err: any) {
           logger.error({ err }, 'Failed to add ICE candidate');
         }

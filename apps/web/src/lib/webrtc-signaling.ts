@@ -80,16 +80,36 @@ export class WebRTCSignaling {
   ): Promise<void> {
     onStateChange('requesting');
 
-    // 1. Listen on Presence channel
-    const presenceChannel = this.supabase.channel(`user:${this.userId}:agents`);
-    await presenceChannel.subscribe();
+    // 1. Listen on Presence channel (with broadcast enabled)
+    const presenceChannel = this.supabase.channel(`user:${this.userId}:agents`, {
+      config: {
+        broadcast: { self: false },
+      },
+    });
+
+    // Subscribe and wait for channel to be ready
+    const subscribePromise = new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Channel subscription timeout')), 5000);
+      presenceChannel.subscribe((status) => {
+        console.log('[WebRTCSignaling] Presence channel subscription status:', status);
+        if (status === 'SUBSCRIBED') {
+          clearTimeout(timeout);
+          resolve();
+        }
+      });
+    });
+    await subscribePromise;
+
+    console.log('[WebRTCSignaling] Presence channel state after subscribe:', presenceChannel.state);
 
     // 2. Send CONNECTION_REQUEST
-    await presenceChannel.send({
+    console.log('[WebRTCSignaling] Sending CONNECTION_REQUEST to agent:', agentId);
+    const sendResult = await presenceChannel.send({
       type: 'broadcast',
       event: 'connection-request',
       payload: { agentId },
     });
+    console.log('[WebRTCSignaling] Send result:', sendResult);
 
     onStateChange('waiting-ready');
 
@@ -100,9 +120,27 @@ export class WebRTCSignaling {
       throw new Error('Agent did not respond (timeout waiting for READY)');
     }
 
-    // 4. Create signaling channel
-    const signalingChannel = this.supabase.channel(`agent:${agentId}:signaling`);
-    await signalingChannel.subscribe();
+    // 4. Create signaling channel (with broadcast enabled)
+    const signalingChannel = this.supabase.channel(`agent:${agentId}:signaling`, {
+      config: {
+        broadcast: { self: false },
+      },
+    });
+
+    // Subscribe and wait for channel to be ready
+    const signalingSubscribePromise = new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(
+        () => reject(new Error('Signaling channel subscription timeout')),
+        5000
+      );
+      signalingChannel.subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          clearTimeout(timeout);
+          resolve();
+        }
+      });
+    });
+    await signalingSubscribePromise;
 
     onStateChange('creating-offer');
 
@@ -183,15 +221,28 @@ export class WebRTCSignaling {
     agentId: string,
     timeout: number
   ): Promise<boolean> {
+    console.log('[WebRTCSignaling] waitForReady: Initial channel state:', channel.state);
+
+    // Monitor channel state changes
+    const stateInterval = setInterval(() => {
+      console.log('[WebRTCSignaling] waitForReady: Channel state during wait:', channel.state);
+    }, 1000);
+
     return new Promise((resolve) => {
-      const timer = setTimeout(() => resolve(false), timeout);
+      const timer = setTimeout(() => {
+        clearInterval(stateInterval);
+        console.log('[WebRTCSignaling] waitForReady: Timeout, final channel state:', channel.state);
+        resolve(false);
+      }, timeout);
 
       const subscription = (channel as any).on(
         'broadcast',
         { event: 'connection-ready' },
-        (msg: { agentId: string }) => {
-          if (msg.agentId === agentId) {
+        (msg: { payload: { agentId: string } }) => {
+          console.log('[WebRTCSignaling] Received connection-ready:', msg);
+          if (msg.payload.agentId === agentId) {
             clearTimeout(timer);
+            clearInterval(stateInterval);
             subscription.unsubscribe();
             resolve(true);
           }
@@ -213,10 +264,11 @@ export class WebRTCSignaling {
       const subscription = (channel as any).on(
         'broadcast',
         { event: 'answer' },
-        (msg: { sdp: string }) => {
+        (msg: { payload: { sdp: string } }) => {
+          console.log('[WebRTCSignaling] Received answer');
           clearTimeout(timer);
           subscription.unsubscribe();
-          resolve(msg);
+          resolve(msg.payload);
         }
       );
     });
@@ -230,10 +282,12 @@ export class WebRTCSignaling {
     (channel as any).on(
       'broadcast',
       { event: 'candidate' },
-      (msg: { candidate: string; sdpMid?: string; sdpMLineIndex?: number }) => {
-        client.addIceCandidate(msg.candidate, msg.sdpMid, msg.sdpMLineIndex).catch((err) => {
-          console.error('[WebRTCSignaling] Failed to add ICE candidate:', err);
-        });
+      (msg: { payload: { candidate: string; sdpMid?: string; sdpMLineIndex?: number } }) => {
+        client
+          .addIceCandidate(msg.payload.candidate, msg.payload.sdpMid, msg.payload.sdpMLineIndex)
+          .catch((err) => {
+            console.error('[WebRTCSignaling] Failed to add ICE candidate:', err);
+          });
       }
     );
   }

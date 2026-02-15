@@ -96,8 +96,9 @@ export default function HomeContent() {
     if (!isAuthed) return;
 
     if (needsAuth) {
-      // Cloud mode: connect to the selected agent URL
-      if (selectedAgent) {
+      // Cloud mode (Supabase): WebRTC connection is handled in agentStore.selectAgent()
+      // For Token mode: connect to the selected agent URL via WebSocket
+      if (AUTH_MODE === 'token' && selectedAgent) {
         connect(selectedAgent.url);
       }
     } else {
@@ -156,8 +157,10 @@ export default function HomeContent() {
     return AUTH_MODE === 'supabase' ? <SupabaseLoginScreen /> : <TokenLoginScreen />;
   }
 
-  // Gate 2: Agent selector (only in auth mode, when no agent selected)
-  if (needsAuth && (showAgentSelector || (!selectedAgent && agents.length !== 1))) {
+  // Gate 2: Agent selector
+  // In Supabase mode: always show selector to allow explicit agent selection (triggers WebRTC signaling)
+  // In Token mode: show selector when explicitly requested or when no agent selected
+  if (needsAuth && showAgentSelector) {
     return <AgentSelectorScreen />;
   }
 

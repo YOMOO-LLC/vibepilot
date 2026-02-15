@@ -44,8 +44,13 @@ program
   .option('--public-url <url>', 'Agent public WebSocket URL')
   .option('--registry-path <path>', 'Path to agent registry file')
   .option('--supabase-url <url>', 'Supabase project URL (enables Supabase auth mode)')
-  .option('--supabase-key <key>', 'Supabase service role key')
-  .option('--owner-id <uuid>', 'Owner user UUID for Supabase agent registration')
+  .option('--supabase-key <key>', 'Supabase service role key (for admin mode)')
+  .option('--access-token <token>', 'User access token (for user mode, preferred)')
+  .option('--anon-key <key>', 'Supabase anon key (required with --access-token)')
+  .option(
+    '--owner-id <uuid>',
+    'Owner user UUID for Supabase agent registration (only needed with --supabase-key)'
+  )
   .action(async (opts, cmd) => {
     // ── First-run setup wizard ──────────────────────────────────
     const configManager = new ConfigManager();
@@ -78,6 +83,8 @@ program
     // Backward compatibility: explicit CLI flags / env vars override config
     const supabaseUrl = opts.supabaseUrl || process.env.VP_SUPABASE_URL;
     const supabaseKey = opts.supabaseKey || process.env.VP_SUPABASE_KEY;
+    const accessToken = opts.accessToken || process.env.VP_ACCESS_TOKEN;
+    const anonKey = opts.anonKey || process.env.VP_ANON_KEY;
 
     // Initialize auth provider
     let authProvider: AuthProvider | undefined;
@@ -136,8 +143,56 @@ program
     let webrtcSignaling: any;
     const publicUrl = opts.publicUrl || process.env.VP_PUBLIC_URL;
 
-    if (supabaseUrl && supabaseKey) {
-      // Supabase registry mode (explicit service_role key)
+    if (supabaseUrl && accessToken && anonKey) {
+      // User mode: use SupabaseUserRegistry with access token (preferred)
+      registry = new SupabaseUserRegistry(supabaseUrl, anonKey, accessToken);
+      const effectivePublicUrl = publicUrl || `ws://localhost:${port}`;
+
+      const agentInfo = await registry.register({
+        name: agentName,
+        publicUrl: effectivePublicUrl,
+        ownerId: '', // Will be extracted from JWT by SupabaseUserRegistry
+        version: '0.1.0',
+        platform: `${os.platform()}-${os.arch()}`,
+      });
+      registeredAgentId = agentInfo.id;
+      logger.info({ agentId: agentInfo.id, name: agentInfo.name }, 'Agent registered (user mode)');
+
+      // Initialize Supabase client with user access token
+      const supabase = createClient(supabaseUrl, anonKey, {
+        global: {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        },
+      });
+
+      const userId = agentInfo.ownerId; // From registered agent
+
+      // Initialize RealtimePresence
+      presence = new RealtimePresence(supabase, userId);
+      const platform = os.platform() as 'darwin' | 'linux' | 'win32';
+      await presence.announceOnline(agentInfo.id, {
+        agentId: agentInfo.id,
+        name: agentInfo.name,
+        platform,
+        publicKey: '',
+        onlineAt: new Date().toISOString(),
+      });
+      logger.info('RealtimePresence started (user mode)');
+
+      // Initialize WebRTC signaling using the same presence channel
+      const { WebRTCSignaling } = await import('../src/transport/WebRTCSignaling.js');
+      const presenceChannel = presence.getChannel();
+      if (!presenceChannel) {
+        logger.error('Failed to get presence channel');
+        process.exit(1);
+      }
+      webrtcSignaling = new WebRTCSignaling(supabase, userId, agentInfo.id);
+      await webrtcSignaling.start(presenceChannel);
+      logger.info('WebRTC signaling initialized (user mode)');
+    } else if (supabaseUrl && supabaseKey) {
+      // Service role mode: use SupabaseRegistry (backward compatibility)
       registry = new SupabaseRegistry(supabaseUrl, supabaseKey);
       const effectivePublicUrl = publicUrl || `ws://localhost:${port}`;
 
@@ -155,7 +210,10 @@ program
         platform: `${os.platform()}-${os.arch()}`,
       });
       registeredAgentId = agentInfo.id;
-      logger.info({ agentId: agentInfo.id, name: agentInfo.name }, 'Agent registered (Supabase)');
+      logger.info(
+        { agentId: agentInfo.id, name: agentInfo.name },
+        'Agent registered (service role mode)'
+      );
 
       // Initialize RealtimePresence and broadcast online status
       // Note: For service_role mode, we cannot use presence (requires user JWT)
@@ -216,8 +274,11 @@ program
           const { WebRTCSignaling } = await import('../src/transport/WebRTCSignaling.js');
           webrtcSignaling = new WebRTCSignaling(supabase, refreshed.userId, agentInfo.id);
 
-          // Get presence channel and start listening
-          const presenceChannel = supabase.channel(`user:${refreshed.userId}:agents`);
+          // Use the same presence channel that RealtimePresence is using
+          const presenceChannel = presence.getChannel();
+          if (!presenceChannel) {
+            throw new Error('Presence channel not available');
+          }
           await webrtcSignaling.start(presenceChannel);
 
           logger.info('WebRTC signaling initialized');

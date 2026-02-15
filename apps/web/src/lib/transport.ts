@@ -138,6 +138,49 @@ export class TransportManager {
     this.setActiveTransport('websocket');
   }
 
+  /**
+   * Use an externally-established WebRTC client (e.g., from Supabase signaling)
+   * instead of the traditional WebSocket + WebRTC upgrade flow.
+   */
+  useWebRTCClient(
+    client: VPWebRTCClient,
+    onRtcStateChange?: (state: WebRTCState) => void,
+    onTransportChange?: (transport: TransportType) => void
+  ): void {
+    // Clean up existing client
+    this.rtcClient.close();
+
+    // Replace with provided client
+    this.rtcClient = client;
+    this.onRtcStateChange = onRtcStateChange;
+    this.onTransportChange = onTransportChange;
+
+    // Monitor WebRTC state
+    const stateInterval = setInterval(() => {
+      const state = this.rtcClient.state;
+      this.onRtcStateChange?.(state);
+
+      if (state === 'connected') {
+        this.setActiveTransport('webrtc');
+      } else if (state === 'failed' || state === 'disconnected') {
+        this.setActiveTransport('websocket');
+      }
+    }, 500);
+
+    // Clean up interval on disconnect
+    const originalClose = this.rtcClient.close.bind(this.rtcClient);
+    this.rtcClient.close = () => {
+      clearInterval(stateInterval);
+      originalClose();
+    };
+
+    // If already connected, update transport immediately
+    if (this.rtcClient.state === 'connected') {
+      this.setActiveTransport('webrtc');
+      this.onRtcStateChange?.('connected');
+    }
+  }
+
   private attemptWebRTCUpgrade(): void {
     this.rtcClient.createOffer(
       // onSignal: send signaling messages through WebSocket

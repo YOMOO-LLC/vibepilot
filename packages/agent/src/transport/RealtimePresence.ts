@@ -25,17 +25,27 @@ export class RealtimePresence {
   ) {}
 
   /**
+   * Get the presence channel (must call announceOnline first)
+   */
+  getChannel(): RealtimeChannel | null {
+    return this.channel;
+  }
+
+  /**
    * Announce agent online status and start heartbeat
    *
    * @param agentId - Agent identifier (used as presence key)
    * @param metadata - Agent presence metadata (AgentPresence)
    */
   async announceOnline(agentId: string, metadata: AgentPresence): Promise<void> {
-    // Create channel with presence key
+    // Create channel with presence AND broadcast enabled
     this.channel = this.supabase.channel(`user:${this.userId}:agents`, {
       config: {
         presence: {
           key: agentId,
+        },
+        broadcast: {
+          self: true, // Receive own broadcasts
         },
       },
     });
