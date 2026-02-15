@@ -1,5 +1,6 @@
 import { existsSync, statSync, chmodSync } from 'fs';
 import { dirname, join } from 'path';
+import { createRequire } from 'module';
 import { logger } from './logger.js';
 
 /**
@@ -10,6 +11,9 @@ import { logger } from './logger.js';
  */
 export function checkNodePtyPermissions(): void {
   try {
+    // Create require function for ESM environment
+    const require = createRequire(import.meta.url);
+
     // Find node-pty installation path
     const nodePtyPath = require.resolve('node-pty');
     const nodePtyRoot = dirname(dirname(nodePtyPath)); // Go up from lib/index.js to root
