@@ -57,6 +57,8 @@ signaling-server/    → standalone WebRTC signaling relay
 | ------------------------- | ------------ | --------------------------------------------------- |
 | WebSocketServer           | `transport/` | Central message router, per-client `ClientState`    |
 | WebRTCPeer                | `transport/` | P2P data channels via `node-datachannel`            |
+| WebRTCSignaling           | `transport/` | WebRTC signaling via Supabase Realtime (Cloud mode) |
+| RealtimePresence          | `transport/` | Agent presence broadcast on Supabase Realtime       |
 | PtyManager                | `pty/`       | `node-pty` sessions, CWD polling                    |
 | SessionPersistenceManager | `pty/`       | Orphan/reclaim lifecycle, `CircularBuffer` replay   |
 | FileTreeService           | `fs/`        | Directory listing, ignore patterns                  |
@@ -84,7 +86,14 @@ signaling-server/    → standalone WebRTC signaling relay
 
 ## Key Patterns
 
-**Transport**: Browser connects directly to Agent (P2P, no relay). WebSocket connects first, WebRTC upgrades in background via STUN. Three data channels: `terminal-io` (low-latency, unreliable), `file-transfer` (reliable), and `browser-stream` (reliable, screencast frames + input). See [README.md#connection-topology](README.md#connection-topology) for full topology diagram.
+**Transport**: Browser connects directly to Agent (P2P, no relay). In Local/Token mode, WebSocket connects first, then WebRTC upgrades via STUN. In Cloud mode with Supabase, WebRTC signaling occurs via Supabase Realtime channels before establishing P2P connection. Three data channels: `terminal-io` (low-latency, unreliable), `file-transfer` (reliable), and `browser-stream` (reliable, screencast frames + input). See [README.md#connection-topology](README.md#connection-topology) for full topology diagram.
+
+**WebRTC Signaling (Cloud mode)**: Uses Supabase Realtime for out-of-band signaling when WebSocket may not be initially accessible:
+
+- Presence channel `user:{userId}:agents`: connection-request/connection-ready broadcasts
+- Signaling channel `agent:{agentId}:signaling`: SDP offer/answer + ICE candidate exchange
+- Ephemeral channels auto-cleanup after 2 minutes
+- All signaling messages use `{ payload: {...} }` wrapper (Supabase Realtime v2 format)
 
 **Message flow**:
 
@@ -118,6 +127,7 @@ Store → transportManager.send(type, payload)
 - **Store tests**: `vi.mock('@/lib/transport')` → `send` spy + `_trigger` helper for incoming messages
 - **Component tests**: `vi.mock('@/stores/...')` for isolation
 - **Integration tests**: Random ports (`19800 + Math.random() * 1000`), `connectClient`/`waitForMessage` helpers
+- **WebRTC signaling tests**: Mock Supabase channels with callback-based `subscribe()`, use `{ payload: {...} }` structure for all triggers, increase wait times (50ms) for async operations, use `queueMicrotask` for fake timer compatibility
 
 ## Conventions
 

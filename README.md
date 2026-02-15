@@ -2,7 +2,7 @@
 
 > Browser-based development environment with persistent terminal sessions, real-time file editing, and optional cloud remote access.
 
-[![Tests](https://img.shields.io/badge/tests-619%20passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-635%20passing-brightgreen)]()
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)]()
 [![License](https://img.shields.io/badge/license-BSL%201.1-orange)]()
 [![Node.js](https://img.shields.io/badge/Node.js-20%2B-green)]()
@@ -71,8 +71,8 @@ VibePilot brings your terminal, file tree, and code editor to the browser. Run i
 │                         Agent (Node.js)                             │
 │                                                                     │
 │  ┌──────────────┐ ┌──────────────┐ ┌──────────────────────────────┐ │
-│  │  PtyManager  │ │  FileWatcher │ │       WebRTC Peer            │ │
-│  │  (node-pty)  │ │  (chokidar)  │ │    (node-datachannel)        │ │
+│  │  PtyManager  │ │  FileWatcher │ │    WebRTC Peer + Signaling   │ │
+│  │  (node-pty)  │ │  (chokidar)  │ │  (node-datachannel + Realtime)│ │
 │  └──────────────┘ └──────────────┘ └──────────────────────────────┘ │
 │                                                                     │
 │  ┌──────────────────────────────────────────────────────────────┐   │
@@ -107,7 +107,7 @@ VibePilot uses a **peer-to-peer architecture** where the browser connects direct
 └──────────┘                                        └──────────┘
 ```
 
-**Connection upgrade flow:**
+**Connection upgrade flow (Local/Token mode):**
 
 ```
 1. Browser opens WebSocket directly to Agent URL (e.g. wss://my-server:9800)
@@ -121,6 +121,24 @@ VibePilot uses a **peer-to-peer architecture** where the browser connects direct
 5. WebSocket remains open for signaling and non-realtime messages
 6. If WebRTC fails, all traffic stays on WebSocket (graceful fallback)
 ```
+
+**Cloud mode with Supabase Realtime signaling:**
+
+In Cloud mode, WebRTC signaling uses Supabase Realtime instead of WebSocket for initial connection establishment:
+
+```
+1. User selects Agent from list → Browser gets Agent ID from Supabase registry
+2. WebRTC signaling via Supabase Realtime broadcasts:
+   a. Browser sends CONNECTION_REQUEST on presence channel (user:{userId}:agents)
+   b. Agent responds with connection-ready
+   c. Browser and Agent exchange SDP offer/answer on signaling channel (agent:{agentId}:signaling)
+   d. ICE candidates exchanged via Supabase Realtime
+   e. STUN hole-punching establishes direct P2P connection
+3. Once WebRTC connects, terminal I/O flows over P2P data channels
+4. If WebRTC fails, fallback to direct WebSocket connection (if Agent URL is accessible)
+```
+
+**Why Supabase Realtime for signaling?** In Cloud mode, the browser may not have direct WebSocket access to the Agent initially (behind NAT, dynamic IP). Supabase Realtime provides a reliable out-of-band signaling channel that both parties can reach, enabling WebRTC connection establishment even when direct connectivity isn't possible upfront.
 
 ### Data Channels
 
@@ -276,13 +294,16 @@ The web app shows a login screen with email/password and OAuth options. After lo
 
 ```
 1. User logs in → Supabase Auth (OAuth / email)
-2. User selects Agent → agent.url loaded from Supabase DB (e.g. wss://home.example.com:9800)
-3. Browser connects directly to Agent's WebSocket URL (no relay)
-4. WebRTC P2P upgrade via STUN hole-punching
-5. All terminal/file traffic flows P2P between browser and Agent
+2. User selects Agent → triggers WebRTC connection via Supabase Realtime signaling
+3. Browser ↔ Agent: WebRTC signaling via Supabase Realtime channels
+   - CONNECTION_REQUEST/connection-ready on presence channel
+   - SDP offer/answer + ICE candidates on ephemeral signaling channel
+4. STUN hole-punching establishes direct P2P connection
+5. All terminal/file traffic flows P2P between browser and Agent (<10ms latency)
+6. Fallback: If WebRTC fails and Agent URL is accessible, direct WebSocket connection
 ```
 
-Supabase only handles authentication and agent registry (tiny API calls). **No user data or terminal traffic passes through any central server.** The Agent must be reachable from the browser (public IP or VPN).
+Supabase handles authentication, agent registry, and **WebRTC signaling** (tiny broadcast messages). **No user data or terminal traffic passes through any central server** — it all flows P2P once the connection is established. The Agent does not need a public IP or open port if WebRTC succeeds via STUN.
 
 **Setup steps:**
 
