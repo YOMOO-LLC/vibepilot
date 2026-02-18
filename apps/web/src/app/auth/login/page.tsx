@@ -44,6 +44,10 @@ function LoginForm() {
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!email || !password) {
+      setError('Please enter your email and password.');
+      return;
+    }
     setLoading(true);
     setError('');
 
