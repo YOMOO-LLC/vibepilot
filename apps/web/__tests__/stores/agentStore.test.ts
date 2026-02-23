@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 // Mock the supabase client module before importing stores
 const mockChannel = {
@@ -155,7 +155,12 @@ describe('useAgentStore.selectAgent in Supabase mode', () => {
     }));
   });
 
-  it('updates connectionStore to connected when WebRTC state becomes connected', async () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.clearAllMocks();
+  });
+
+  it('updates connectionStore to connected eagerly after signaling.connect() resolves', async () => {
     const { useAgentStore } = await import('@/stores/agentStore');
     const { transportManager } = await import('@/lib/transport');
     const { useConnectionStore } = await import('@/stores/connectionStore');
@@ -178,22 +183,7 @@ describe('useAgentStore.selectAgent in Supabase mode', () => {
     // Verify useWebRTCClient was called
     expect(transportManager.useWebRTCClient).toHaveBeenCalled();
 
-    // Get the onRtcStateChange callback passed to useWebRTCClient
-    const [, onRtcStateChange] = (transportManager.useWebRTCClient as any).mock.calls[0];
-
-    // Initially still disconnected (the callback hasn't fired yet)
-    // After selectAgent, connectionStore may or may not be connected depending on flow
-    // Reset to known state for testing the callback
-    useConnectionStore.setState({
-      state: 'disconnected',
-      webrtcState: 'disconnected',
-      activeTransport: 'websocket',
-    });
-
-    // Simulate WebRTC becoming connected
-    onRtcStateChange('connected');
-
-    // Now connectionStore should be updated
+    // connectionStore should be updated eagerly (immediately after signaling.connect() resolves)
     expect(useConnectionStore.getState().state).toBe('connected');
     expect(useConnectionStore.getState().webrtcState).toBe('connected');
     expect(useConnectionStore.getState().activeTransport).toBe('webrtc');
@@ -225,5 +215,29 @@ describe('useAgentStore.selectAgent in Supabase mode', () => {
 
     onRtcStateChange('disconnected');
     expect(useConnectionStore.getState().state).toBe('disconnected');
+    expect(useConnectionStore.getState().webrtcState).toBe('disconnected');
+    expect(useConnectionStore.getState().activeTransport).toBe('websocket');
+  });
+
+  it('updates connectionStore to disconnected with failed webrtcState when WebRTC fails', async () => {
+    const { useAgentStore } = await import('@/stores/agentStore');
+    const { transportManager } = await import('@/lib/transport');
+    const { useConnectionStore } = await import('@/stores/connectionStore');
+
+    useAgentStore.setState({
+      agents: [{ id: 'agent-1', name: 'Test Agent', url: 'ws://localhost:9800' }],
+    });
+
+    await useAgentStore.getState().selectAgent('agent-1');
+
+    const [, onRtcStateChange] = (transportManager.useWebRTCClient as any).mock.calls[0];
+
+    // First connect, then fail
+    onRtcStateChange('connected');
+    onRtcStateChange('failed');
+
+    expect(useConnectionStore.getState().state).toBe('disconnected');
+    expect(useConnectionStore.getState().webrtcState).toBe('failed');
+    expect(useConnectionStore.getState().activeTransport).toBe('websocket');
   });
 });

@@ -184,6 +184,13 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         console.log('[agentStore] WebRTC connection established');
         useNotificationStore.getState().add('success', 'Connected to agent via WebRTC');
 
+        // Eagerly bridge WebRTC connection → connectionStore so HomeContent effects fire immediately
+        useConnectionStore.setState({
+          state: 'connected',
+          webrtcState: 'connected',
+          activeTransport: 'webrtc',
+        });
+
         // Integrate WebRTC client with transportManager
         // Also bridge WebRTC state → connectionStore so HomeContent effects fire correctly
         const { transportManager } = await import('@/lib/transport');
@@ -191,13 +198,7 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
           client,
           (rtcState) => {
             console.log('[agentStore] Transport WebRTC state:', rtcState);
-            if (rtcState === 'connected') {
-              useConnectionStore.setState({
-                state: 'connected',
-                webrtcState: 'connected',
-                activeTransport: 'webrtc',
-              });
-            } else if (rtcState === 'disconnected' || rtcState === 'failed') {
+            if (rtcState === 'disconnected' || rtcState === 'failed') {
               useConnectionStore.setState({
                 state: 'disconnected',
                 webrtcState: rtcState,
