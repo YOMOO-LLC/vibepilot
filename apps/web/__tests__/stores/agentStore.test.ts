@@ -83,3 +83,147 @@ describe('agentStore', () => {
     expect(mockChannel.subscribe).toHaveBeenCalled();
   });
 });
+
+// Tests for useAgentStore.selectAgent() → connectionStore bridge in Supabase mode
+// These use vi.resetModules() + dynamic imports to reload the module with AUTH_MODE='supabase'
+
+describe('useAgentStore.selectAgent in Supabase mode', () => {
+  beforeEach(async () => {
+    // Set env before module load so AUTH_MODE constant picks it up
+    process.env.NEXT_PUBLIC_AUTH_MODE = 'supabase';
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://test.supabase.co';
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'test-anon-key';
+
+    // Reset all modules so the new AUTH_MODE value is picked up
+    vi.resetModules();
+
+    // Re-register mocks after resetModules (doMock is not hoisted)
+    vi.doMock('@/lib/transport', () => ({
+      transportManager: {
+        useWebRTCClient: vi.fn(),
+        disconnect: vi.fn(),
+        connect: vi.fn(),
+      },
+    }));
+
+    vi.doMock('@/lib/webrtc-signaling', () => ({
+      WebRTCSignaling: vi.fn().mockImplementation(() => ({
+        connect: vi.fn().mockResolvedValue({ close: vi.fn(), state: 'connected' }),
+      })),
+    }));
+
+    vi.doMock('@/lib/supabase', () => ({
+      supabase: {
+        auth: {
+          getSession: vi.fn().mockResolvedValue({
+            data: {
+              session: {
+                access_token: 'test-token',
+                user: { id: 'test-user-id' },
+              },
+            },
+          }),
+        },
+        from: vi.fn().mockReturnValue({
+          select: vi.fn().mockReturnValue({
+            eq: vi.fn().mockReturnValue({
+              order: vi.fn().mockResolvedValue({
+                data: [
+                  {
+                    id: 'agent-1',
+                    name: 'Test Agent',
+                    public_url: 'ws://localhost:9800',
+                    status: 'online',
+                  },
+                ],
+                error: null,
+              }),
+            }),
+          }),
+        }),
+      },
+    }));
+
+    vi.doMock('@supabase/supabase-js', () => ({
+      createClient: vi.fn().mockReturnValue({}),
+    }));
+
+    vi.doMock('@/stores/notificationStore', () => ({
+      useNotificationStore: {
+        getState: vi.fn().mockReturnValue({ add: vi.fn() }),
+      },
+    }));
+  });
+
+  it('updates connectionStore to connected when WebRTC state becomes connected', async () => {
+    const { useAgentStore } = await import('@/stores/agentStore');
+    const { transportManager } = await import('@/lib/transport');
+    const { useConnectionStore } = await import('@/stores/connectionStore');
+
+    // Reset connection store state
+    useConnectionStore.setState({
+      state: 'disconnected',
+      webrtcState: 'disconnected',
+      activeTransport: 'websocket',
+    });
+
+    // Seed agents in store
+    useAgentStore.setState({
+      agents: [{ id: 'agent-1', name: 'Test Agent', url: 'ws://localhost:9800' }],
+    });
+
+    // Select the agent (triggers WebRTC signaling)
+    await useAgentStore.getState().selectAgent('agent-1');
+
+    // Verify useWebRTCClient was called
+    expect(transportManager.useWebRTCClient).toHaveBeenCalled();
+
+    // Get the onRtcStateChange callback passed to useWebRTCClient
+    const [, onRtcStateChange] = (transportManager.useWebRTCClient as any).mock.calls[0];
+
+    // Initially still disconnected (the callback hasn't fired yet)
+    // After selectAgent, connectionStore may or may not be connected depending on flow
+    // Reset to known state for testing the callback
+    useConnectionStore.setState({
+      state: 'disconnected',
+      webrtcState: 'disconnected',
+      activeTransport: 'websocket',
+    });
+
+    // Simulate WebRTC becoming connected
+    onRtcStateChange('connected');
+
+    // Now connectionStore should be updated
+    expect(useConnectionStore.getState().state).toBe('connected');
+    expect(useConnectionStore.getState().webrtcState).toBe('connected');
+    expect(useConnectionStore.getState().activeTransport).toBe('webrtc');
+  });
+
+  it('updates connectionStore to disconnected when WebRTC disconnects', async () => {
+    const { useAgentStore } = await import('@/stores/agentStore');
+    const { transportManager } = await import('@/lib/transport');
+    const { useConnectionStore } = await import('@/stores/connectionStore');
+
+    // Reset connection store state
+    useConnectionStore.setState({
+      state: 'disconnected',
+      webrtcState: 'disconnected',
+      activeTransport: 'websocket',
+    });
+
+    useAgentStore.setState({
+      agents: [{ id: 'agent-1', name: 'Test Agent', url: 'ws://localhost:9800' }],
+    });
+
+    await useAgentStore.getState().selectAgent('agent-1');
+
+    const [, onRtcStateChange] = (transportManager.useWebRTCClient as any).mock.calls[0];
+
+    // Connect then disconnect
+    onRtcStateChange('connected');
+    expect(useConnectionStore.getState().state).toBe('connected');
+
+    onRtcStateChange('disconnected');
+    expect(useConnectionStore.getState().state).toBe('disconnected');
+  });
+});

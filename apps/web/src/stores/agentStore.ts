@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import type { RealtimeChannel, SupabaseClient } from '@supabase/supabase-js';
 import type { VPWebRTCClient } from '@/lib/webrtc';
 import { useNotificationStore } from '@/stores/notificationStore';
+import { useConnectionStore } from '@/stores/connectionStore';
 
 const AUTH_MODE = process.env.NEXT_PUBLIC_AUTH_MODE || 'none';
 
@@ -184,14 +185,29 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         useNotificationStore.getState().add('success', 'Connected to agent via WebRTC');
 
         // Integrate WebRTC client with transportManager
+        // Also bridge WebRTC state → connectionStore so HomeContent effects fire correctly
         const { transportManager } = await import('@/lib/transport');
         transportManager.useWebRTCClient(
           client,
-          (state) => {
-            console.log('[agentStore] Transport WebRTC state:', state);
+          (rtcState) => {
+            console.log('[agentStore] Transport WebRTC state:', rtcState);
+            if (rtcState === 'connected') {
+              useConnectionStore.setState({
+                state: 'connected',
+                webrtcState: 'connected',
+                activeTransport: 'webrtc',
+              });
+            } else if (rtcState === 'disconnected' || rtcState === 'failed') {
+              useConnectionStore.setState({
+                state: 'disconnected',
+                webrtcState: rtcState,
+                activeTransport: 'websocket',
+              });
+            }
           },
           (transport) => {
             console.log('[agentStore] Active transport:', transport);
+            useConnectionStore.setState({ activeTransport: transport });
           }
         );
       } catch (err: any) {
@@ -406,6 +422,29 @@ export const agentStore = create<CloudAgentStore>((set, get) => ({
 
       // Store client and agent ID
       set({ activeClient: client, selectedAgentId: agentId });
+
+      // Bridge WebRTC state → connectionStore so HomeContent effects fire correctly
+      useConnectionStore.setState({
+        state: 'connected',
+        webrtcState: 'connected',
+        activeTransport: 'webrtc',
+      });
+      const { transportManager } = await import('@/lib/transport');
+      transportManager.useWebRTCClient(
+        client,
+        (rtcState) => {
+          if (rtcState === 'disconnected' || rtcState === 'failed') {
+            useConnectionStore.setState({
+              state: 'disconnected',
+              webrtcState: rtcState,
+              activeTransport: 'websocket',
+            });
+          }
+        },
+        (transport) => {
+          useConnectionStore.setState({ activeTransport: transport });
+        }
+      );
     } catch (err: any) {
       console.error('[agentStore] WebRTC connection failed:', err.message);
       useNotificationStore.getState().add('error', 'Connection failed', err.message);
