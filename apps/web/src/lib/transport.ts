@@ -140,8 +140,23 @@ export class TransportManager {
         this.rtcClient.send('file-transfer', type, payload);
         return;
       } catch {
-        // WebRTC send failed, fall through to WebSocket
+        // WebRTC DataChannel not open yet (PeerConnection connected but channels still
+        // negotiating). Do NOT fall through to WebSocket — it is also unavailable.
+        // Log and return; the caller (e.g. loadProjects) will be retried by the
+        // project:list-data listener or a subsequent reconnect cycle.
+        console.warn(
+          `[Transport] send(${type}): WebRTC channel not open yet and WebSocket unavailable — dropping message`
+        );
+        return;
       }
+    }
+
+    // Only call wsClient.send when WebSocket is actually available (avoids ErrorBoundary throw)
+    if (wsClient.state !== 'connected') {
+      console.warn(
+        `[Transport] send(${type}): no transport available (WS: ${wsClient.state}, RTC: ${this.rtcClient.state}) — dropping message`
+      );
+      return;
     }
     wsClient.send(type, payload);
   }
