@@ -168,9 +168,9 @@ export class WebRTCSignaling {
           // onSignal: Send signaling messages
           (msg) => {
             const event =
-              msg.type === 'signal-offer'
+              msg.type === 'signal:offer'
                 ? 'offer'
-                : msg.type === 'signal-candidate'
+                : msg.type === 'signal:candidate'
                   ? 'candidate'
                   : 'unknown';
 

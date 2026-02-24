@@ -173,6 +173,69 @@ describe('WebRTCSignaling (Web)', () => {
       );
     });
 
+    it('should send offer with event name "offer" (not "unknown")', async () => {
+      // Regression test: MessageType.SIGNAL_OFFER = 'signal:offer' (colon),
+      // so the event mapping must compare against 'signal:offer', not 'signal-offer'.
+      const onStateChange = vi.fn();
+
+      let capturedSignalCallback: ((msg: any) => void) | null = null;
+      const mockClient = {
+        createOffer: vi.fn().mockImplementation(async (onSignal: any, _onState: any) => {
+          capturedSignalCallback = onSignal;
+          // Simulate sending a signal-offer message (as VPWebRTCClient does)
+          onSignal({ type: 'signal:offer', id: '1', timestamp: 0, payload: { sdp: 'offer-sdp' } });
+          // Also simulate a signal-candidate message
+          onSignal({
+            type: 'signal:candidate',
+            id: '2',
+            timestamp: 0,
+            payload: { candidate: 'cand', sdpMid: '0', sdpMLineIndex: 0 },
+          });
+        }),
+        handleAnswer: vi.fn().mockResolvedValue(undefined),
+        addIceCandidate: vi.fn().mockResolvedValue(undefined),
+        state: 'disconnected',
+        on: vi.fn(),
+        close: vi.fn(),
+      };
+      (VPWebRTCClient as any).mockImplementation(() => mockClient);
+
+      const presenceChannel = mockSupabase.channel('user:user-123:agents');
+      const connectPromise = signaling.connect('agent-456', onStateChange);
+
+      // Wait for subscription + CONNECTION_REQUEST
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // Simulate Agent READY
+      presenceChannel.trigger('connection-ready', { payload: { agentId: 'agent-456' } });
+
+      // Wait for signaling channel to be created and offer to be sent
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      const signalingChannel = mockSupabase.channel('agent:agent-456:signaling');
+
+      // Verify offer was sent with event: 'offer', NOT 'unknown'
+      expect(signalingChannel.send).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'broadcast', event: 'offer' })
+      );
+      // Verify candidate was sent with event: 'candidate', NOT 'unknown'
+      expect(signalingChannel.send).toHaveBeenCalledWith(
+        expect.objectContaining({ type: 'broadcast', event: 'candidate' })
+      );
+      // Verify 'unknown' was NEVER sent
+      expect(signalingChannel.send).not.toHaveBeenCalledWith(
+        expect.objectContaining({ event: 'unknown' })
+      );
+
+      // Finish the connection so we don't leave dangling promises
+      signalingChannel.trigger('answer', { payload: { sdp: 'answer-sdp' } });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      // Simulate WebRTC connected via onStateChange in createOffer
+      (mockClient.createOffer as any).mock.calls[0][1]('connected');
+
+      await connectPromise;
+    });
+
     it('should retry 3 times on failure', async () => {
       vi.useFakeTimers();
 
