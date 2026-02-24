@@ -184,15 +184,9 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
         console.log('[agentStore] WebRTC connection established');
         useNotificationStore.getState().add('success', 'Connected to agent via WebRTC');
 
-        // Eagerly bridge WebRTC connection → connectionStore so HomeContent effects fire immediately
-        useConnectionStore.setState({
-          state: 'connected',
-          webrtcState: 'connected',
-          activeTransport: 'webrtc',
-        });
-
-        // Integrate WebRTC client with transportManager
-        // Also bridge WebRTC state → connectionStore so HomeContent effects fire correctly
+        // Install WebRTC client into transportManager FIRST so that when
+        // connectionStore.setState triggers React effects (e.g. loadProjects),
+        // transportManager already has the live client to route messages via WebRTC.
         const { transportManager } = await import('@/lib/transport');
         transportManager.useWebRTCClient(
           client,
@@ -211,6 +205,14 @@ export const useAgentStore = create<AgentStore>((set, get) => ({
             useConnectionStore.setState({ activeTransport: transport });
           }
         );
+
+        // Bridge WebRTC connection → connectionStore AFTER transportManager is wired,
+        // so HomeContent effects that fire on 'connected' can safely call transportManager.send()
+        useConnectionStore.setState({
+          state: 'connected',
+          webrtcState: 'connected',
+          activeTransport: 'webrtc',
+        });
       } catch (err: any) {
         console.error('[agentStore] WebRTC connection failed:', err.message);
         useNotificationStore.getState().add('error', 'WebRTC connection failed', err.message);
@@ -424,12 +426,9 @@ export const agentStore = create<CloudAgentStore>((set, get) => ({
       // Store client and agent ID
       set({ activeClient: client, selectedAgentId: agentId });
 
-      // Bridge WebRTC state → connectionStore so HomeContent effects fire correctly
-      useConnectionStore.setState({
-        state: 'connected',
-        webrtcState: 'connected',
-        activeTransport: 'webrtc',
-      });
+      // Install new WebRTC client into transportManager FIRST, so that when
+      // connectionStore.setState fires React effects (e.g. loadProjects), the
+      // transportManager already has the live client and can route via WebRTC.
       const { transportManager } = await import('@/lib/transport');
       transportManager.useWebRTCClient(
         client,
@@ -446,6 +445,14 @@ export const agentStore = create<CloudAgentStore>((set, get) => ({
           useConnectionStore.setState({ activeTransport: transport });
         }
       );
+
+      // Bridge WebRTC state → connectionStore AFTER transportManager is wired up,
+      // so HomeContent effects that fire on 'connected' can safely call transportManager.send()
+      useConnectionStore.setState({
+        state: 'connected',
+        webrtcState: 'connected',
+        activeTransport: 'webrtc',
+      });
     } catch (err: any) {
       console.error('[agentStore] WebRTC connection failed:', err.message);
       useNotificationStore.getState().add('error', 'Connection failed', err.message);
