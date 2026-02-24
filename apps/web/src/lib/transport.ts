@@ -134,7 +134,15 @@ export class TransportManager {
       }
     }
 
-    // All other messages or fallback: use WebSocket
+    // All other messages: prefer WebRTC file-transfer channel when WebSocket unavailable
+    if (this.rtcClient.state === 'connected' && wsClient.state !== 'connected') {
+      try {
+        this.rtcClient.send('file-transfer', type, payload);
+        return;
+      } catch {
+        // WebRTC send failed, fall through to WebSocket
+      }
+    }
     wsClient.send(type, payload);
   }
 

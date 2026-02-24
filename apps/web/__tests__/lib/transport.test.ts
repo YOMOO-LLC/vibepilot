@@ -469,4 +469,84 @@ describe('TransportManager', () => {
     });
     expect(mockWebRTCClient.send).not.toHaveBeenCalled();
   });
+
+  // Supabase/WebRTC-only mode: WebSocket is never connected, WebRTC is the only transport
+  describe('Supabase/WebRTC-only mode (wsClient not connected)', () => {
+    it('routes project:list through WebRTC file-transfer when WebSocket unavailable', () => {
+      // In Supabase mode, wsClient is never connected; rtcClient is connected
+      mockWsClient.state = 'disconnected';
+      mockWebRTCClient.state = 'connected';
+
+      manager.send(MessageType.PROJECT_LIST, {});
+
+      expect(mockWebRTCClient.send).toHaveBeenCalledWith(
+        'file-transfer',
+        MessageType.PROJECT_LIST,
+        {}
+      );
+      expect(mockWsClient.send).not.toHaveBeenCalled();
+    });
+
+    it('routes project:switch through WebRTC file-transfer when WebSocket unavailable', () => {
+      mockWsClient.state = 'disconnected';
+      mockWebRTCClient.state = 'connected';
+
+      manager.send(MessageType.PROJECT_SWITCH, { projectId: 'p-1' });
+
+      expect(mockWebRTCClient.send).toHaveBeenCalledWith(
+        'file-transfer',
+        MessageType.PROJECT_SWITCH,
+        { projectId: 'p-1' }
+      );
+      expect(mockWsClient.send).not.toHaveBeenCalled();
+    });
+
+    it('routes filetree:list through WebRTC file-transfer when WebSocket unavailable', () => {
+      mockWsClient.state = 'disconnected';
+      mockWebRTCClient.state = 'connected';
+
+      manager.send(MessageType.FILETREE_LIST, { path: '/' });
+
+      expect(mockWebRTCClient.send).toHaveBeenCalledWith(
+        'file-transfer',
+        MessageType.FILETREE_LIST,
+        { path: '/' }
+      );
+      expect(mockWsClient.send).not.toHaveBeenCalled();
+    });
+
+    it('routes file:read through WebRTC file-transfer when WebSocket unavailable', () => {
+      mockWsClient.state = 'disconnected';
+      mockWebRTCClient.state = 'connected';
+
+      manager.send(MessageType.FILE_READ, { path: '/src/index.ts' });
+
+      expect(mockWebRTCClient.send).toHaveBeenCalledWith('file-transfer', MessageType.FILE_READ, {
+        path: '/src/index.ts',
+      });
+      expect(mockWsClient.send).not.toHaveBeenCalled();
+    });
+
+    it('still falls back to WebSocket when WebRTC not connected and WebSocket is connected', () => {
+      mockWsClient.state = 'connected';
+      mockWebRTCClient.state = 'disconnected';
+
+      manager.send(MessageType.PROJECT_LIST, {});
+
+      expect(mockWsClient.send).toHaveBeenCalledWith(MessageType.PROJECT_LIST, {});
+      expect(mockWebRTCClient.send).not.toHaveBeenCalled();
+    });
+
+    it('falls through to WebSocket when WebRTC send throws and WebSocket is connected', () => {
+      mockWsClient.state = 'connected';
+      mockWebRTCClient.state = 'connected';
+      mockWebRTCClient.send.mockImplementationOnce(() => {
+        throw new Error('DataChannel not open');
+      });
+
+      manager.send(MessageType.PROJECT_LIST, {});
+
+      expect(mockWsClient.send).toHaveBeenCalledWith(MessageType.PROJECT_LIST, {});
+    });
+  });
 });
